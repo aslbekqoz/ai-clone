@@ -94,7 +94,7 @@ function cloneForm(){const f={slug:h("input",{placeholder:"dilnoza",required:tru
 
 function selectClone(id){clone=clones.find(c=>c.id===id)||clones[0]||null;store.set(CLONE,clone&&clone.id);render();}
 
-const TABS=[["inbox","Inbox"],["knowledge","Bilim"],["style","Uslub"],["leads","Lidlar"],["stats","Statistika"],["connect","Ulash"],["settings","Sozlamalar"]];
+const TABS=[["inbox","Inbox"],["knowledge","Bilim"],["style","Uslub"],["leads","Lidlar"],["stats","Statistika"],["connect","Ulash"],["billing","Tarif"],["settings","Sozlamalar"]];
 function render(){clearInterval(timer);const app=$("#app");app.replaceChildren();
   if(!apiKey){app.append(renderLogin());return;}
   const sel=h("select",{"aria-label":"Klon",onchange:(e)=>e.target.value==="__new"?(clone=null,render()):selectClone(e.target.value)},
@@ -104,7 +104,7 @@ function render(){clearInterval(timer);const app=$("#app");app.replaceChildren()
   if(!clone){main.append(h("div",{style:"max-width:520px"},cloneForm()));return;}
   main.append(h("nav",{},TABS.map(([id,label])=>h("button",{class:tab===id?"on":"",onclick:()=>{tab=id;render();}},label))));
   const view=h("div");main.append(view);
-  ({inbox:viewInbox,knowledge:viewKnowledge,style:viewStyle,leads:viewLeads,stats:viewStats,connect:viewConnect,settings:viewSettings})[tab](view).catch(e=>toast(e.message,true));}
+  ({inbox:viewInbox,knowledge:viewKnowledge,style:viewStyle,leads:viewLeads,stats:viewStats,connect:viewConnect,billing:viewBilling,settings:viewSettings})[tab](view).catch(e=>toast(e.message,true));}
 
 // --- Inbox ---
 let openConv=null,onlyAlerts=false;
@@ -200,6 +200,25 @@ async function viewConnect(view){const base=location.origin,page=base+"/c/"+clon
     h("div",{class:"card"},h("h3",{},"Ommaviy sahifa"),h("p",{class:"small muted"},"Telegram/Instagram bio'ga qo'ying."),h("pre",{class:"code"},page),h("div",{class:"row"},h("button",{class:"small",onclick:copy(page)},"Nusxalash"),h("a",{href:page,target:"_blank",rel:"noopener"},"Ochish →"))),
     h("div",{class:"card"},h("h3",{},"Sayt vidjeti"),h("p",{class:"small muted"},"Saytingiz </body> tegidan oldin qo'ying."),h("pre",{class:"code"},snippet),h("button",{class:"small",onclick:copy(snippet)},"Nusxalash")),
     h("div",{class:"card"},h("h3",{},"Telegram bot"),h("p",{class:"small muted"},"BotFather'da bot yarating va tokenni serverda TELEGRAM_BOT_TOKEN, CLONE_SLUG="+clone.slug+" bilan ishga tushiring. Eskalatsiya xabarlari uchun Sozlamalar'da Telegram chat ID'ingizni kiriting."))));}
+
+// --- Tarif ---
+const PLAN_NAMES={free:"Free",creator:"Creator",pro:"Pro",business:"Business",enterprise:"Enterprise"};
+const STATUS={pending:"kutilmoqda",paid:"to'langan",cancelled:"bekor qilingan",refunded:"qaytarilgan"};
+const som=(n)=>Number(n).toLocaleString("ru-RU").replace(/,/g," ")+" so'm";
+async function viewBilling(view){let b;try{b=await api("/v1/billing");}catch(e){view.append(h("div",{class:"card"},e.message));return;}
+  const pct=Math.min(100,Math.round(100*b.usedThisMonth/Math.max(1,b.monthlyMessageLimit)));
+  const months=h("select",{"aria-label":"Muddat"},[[1,"1 oy"],[3,"3 oy"],[6,"6 oy"],[12,"12 oy (2 oy bepul)"]].map(([v,l])=>h("option",{value:v},l)));
+  const buy=(plan,provider)=>guard(async()=>{const r=await post("/v1/billing/orders",{plan,months:Number(months.value),provider});location.href=r.checkoutUrl;});
+  view.append(...[h("div",{class:"card",style:"margin-bottom:16px"},h("h3",{},"Joriy tarif: "+(PLAN_NAMES[b.plan]||b.plan)),
+      h("p",{class:"muted"},b.plan==="free"?"Bepul tarif":b.planExpiresAt?"Amal qiladi: "+new Date(b.planExpiresAt).toLocaleDateString("uz-UZ")+" gacha":"Muddatsiz"),
+      h("p",{},"Shu oy: "+b.usedThisMonth+" / "+b.monthlyMessageLimit+" xabar ("+pct+"%)"),
+      h("div",{style:"height:8px;background:var(--line);border-radius:99px;overflow:hidden"},h("div",{style:"height:100%;width:"+pct+"%;background:"+(pct>85?"var(--accent)":"var(--ink)")}))),
+    h("div",{class:"row",style:"margin-bottom:12px"},h("label",{style:"margin:0"},"Muddat:"),h("div",{style:"width:220px"},months)),
+    !b.providers.length&&h("p",{class:"card muted"},"To'lov tizimlari hali sozlanmagan (PAYME_* yoki CLICK_* muhit o'zgaruvchilari)."),
+    h("div",{class:"grid"},b.plans.map(p=>h("div",{class:"card"},h("h3",{},PLAN_NAMES[p.id]),h("p",{style:"font:700 24px Georgia,serif;margin:0"},som(p.priceUzs)),h("p",{class:"muted small"},"oyiga · "+p.monthlyMessages.toLocaleString("ru-RU")+" xabar"),
+      h("div",{class:"row"},b.providers.map(pr=>h("button",{class:pr==="payme"?"":"ghost",onclick:buy(p.id,pr)},pr==="payme"?"Payme":"Click")))))),
+    b.orders.length&&h("div",{class:"card",style:"margin-top:16px"},h("h3",{},"To'lovlar tarixi"),h("div",{class:"tablewrap"},h("table",{},h("thead",{},h("tr",{},["№","Tarif","Muddat","Summa","Tizim","Holat","Sana"].map(x=>h("th",{},x)))),
+      h("tbody",{},b.orders.map(o=>h("tr",{},h("td",{},o.id),h("td",{},PLAN_NAMES[o.plan]),h("td",{},o.months+" oy"),h("td",{},som(o.amount_uzs)),h("td",{},o.provider),h("td",{},h("span",{class:"badge"},STATUS[o.status]||o.status)),h("td",{class:"small muted"},fmt(o.created_at))))))))].filter(Boolean));}
 
 // --- Sozlamalar ---
 async function viewSettings(view){const p=clone.persona;

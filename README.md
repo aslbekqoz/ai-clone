@@ -59,7 +59,7 @@ TELEGRAM_BOT_TOKEN=... pnpm dev:bot  # ixtiyoriy: Telegram bot
 
 ```bash
 pnpm typecheck
-TEST_DATABASE_URL=postgres://aiclone:aiclone@localhost:5432/aiclone pnpm test   # 66 test, ular orasida RLS izolyatsiyasi ham bor
+TEST_DATABASE_URL=postgres://aiclone:aiclone@localhost:5432/aiclone pnpm test   # 77 test: RLS izolyatsiyasi va to'lov oqimlari ham bor
 ```
 
 ### API qisqacha
@@ -76,13 +76,30 @@ TEST_DATABASE_URL=postgres://aiclone:aiclone@localhost:5432/aiclone pnpm test   
 | POST | `/v1/conversations/:id/mode` · `/reply` | Human takeover va egasining javobi |
 | POST | `/v1/messages/:id/feedback` | 👍/👎 va tuzatish. Tuzatish tasdiqlangan javobga aylanadi |
 | POST/GET | `/public/:slug/chat` · `/public/:slug/updates` | Vidjet uchun ommaviy endpointlar |
+| GET/POST | `/v1/billing` · `/v1/billing/orders` | Joriy tarif va foydalanish, Payme/Click checkout havolasi |
+| POST | `/payments/payme` · `/payments/click/prepare` · `/payments/click/complete` | To'lov tizimlari webhooklari |
+
+### To'lovlar (Payme va Click)
+
+Tarif obunalari so'mda: Creator 189 000, Pro 499 000, Business 1 490 000 so'm. Yillik to'lovda 2 oy bepul.
+- To'lov tasdiqlangach, tarif, xabar limiti va kunlik xarajat chegarasi avtomatik yangilanadi. Muddat amaldagi muddat ustiga qo'shiladi.
+- Muddat tugagach, limitlar avtomatik bepul tarifga qaytadi. Buning uchun cron kerak emas.
+
+**Payme Merchant API**
+- To'liq amalga oshirilgan metodlar: `CheckPerformTransaction`, `CreateTransaction`, `PerformTransaction`, `CancelTransaction`, `CheckTransaction`, `GetStatement`.
+- Yaratilgan tranzaksiya 12 soatdan keyin bekor qilinadi. O'tkazilgan to'lov bekor qilinsa (pul qaytarilsa), tarif darhol tugaydi.
+
+**Click SHOP API:** Prepare va Complete bosqichlari, md5 imzo tekshiruvi bilan.
+
+**Ishga tushirish:** kalitlarni `.env` ga yozing (`PAYME_*`, `CLICK_*`). Merchant kabinetida endpoint sifatida `<PUBLIC_BASE_URL>/payments/payme` va `<PUBLIC_BASE_URL>/payments/click/{prepare,complete}` ni ko'rsating.
+
+> ⚠️ Prod'dan oldin Payme va Click sandbox muhitida rasmiy test ssenariylaridan o'ting. Payme fiskal chek uchun xizmatning IKPU kodi ham kerak (`PAYME_IKPU_CODE`).
 
 Barcha `/v1` so'rovlari `Authorization: Bearer <api kalit>` sarlavhasini talab qiladi.
 
 ### MVP'da hali yo'q (keyingi qadamlar)
 
 - Ovozli xabarlarni tushunish (STT), PDF/DOCX parserlari, YouTube transkriptlari.
-- Payme/Click to'lovlari va tariflarni avtomatik almashtirish. Xabar va xarajat limitlari tayyor (`tenants.monthly_message_limit`, `daily_spend_cap_usd`).
 - So'rovni LLM orqali qayta yozish, reranker va LLM asosidagi eskalatsiya klassifikatori. Hozircha qoidalar asosida ishlaydi.
 - Ko'p klonli Telegram webhook marshrutlash. Hozir bitta bot bitta klonga xizmat qiladi.
 

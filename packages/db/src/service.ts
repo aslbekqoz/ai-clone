@@ -16,6 +16,7 @@ import {
   type Locator,
   type StyleProfile,
 } from "@ai-clone/core";
+import { FREE_PLAN } from "./billing.js";
 import { PgKnowledgeStore } from "./knowledge-store.js";
 import { toVector, withTenant, type Db, type Tx } from "./pool.js";
 
@@ -498,11 +499,12 @@ async function loadHistory(tx: Tx, conversationId: string): Promise<ChatTurn[]> 
 async function usageExceeded(tx: Tx, tenantId: string): Promise<boolean> {
   const { rows } = await tx.query<{ used: number; lim: number; spent: number; cap: number }>(
     `SELECT coalesce((SELECT sum(messages) FROM usage_ledger WHERE tenant_id = $1 AND day >= date_trunc('month', current_date)), 0)::int AS used,
-            t.monthly_message_limit AS lim,
+            CASE WHEN t.plan_expires_at < now() THEN $2 ELSE t.monthly_message_limit END AS lim,
             coalesce((SELECT cost_usd FROM usage_ledger WHERE tenant_id = $1 AND day = current_date), 0)::float AS spent,
-            t.daily_spend_cap_usd::float AS cap
+            CASE WHEN t.plan_expires_at < now() THEN $3 ELSE t.daily_spend_cap_usd END::float AS cap
        FROM tenants t WHERE t.id = $1`,
-    [tenantId],
+    // Muddati o'tgan pullik tarif avtomatik bepul tarif limitlariga qaytadi (cron kerak emas).
+    [tenantId, FREE_PLAN.monthlyMessages, FREE_PLAN.dailySpendCapUsd],
   );
   const r = rows[0];
   return !r || r.used >= r.lim || r.spent >= r.cap;

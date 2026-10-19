@@ -1,5 +1,5 @@
 import { HashingEmbedder, LLMRouter, MockProvider, mockPolicy } from "@ai-clone/core";
-import { CloneService, createPool, migrate, type Db } from "@ai-clone/db";
+import { BillingService, CloneService, createPool, migrate, type Db } from "@ai-clone/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
 import { htmlToText } from "../src/fetch-url.js";
@@ -42,7 +42,7 @@ describe.skipIf(!url)("HTTP API (Postgres)", () => {
   beforeAll(async () => {
     db = createPool(url);
     await migrate(db);
-    app = createApp(new CloneService(db, new HashingEmbedder(), new LLMRouter([new MockProvider()], mockPolicy())), { adminToken: "admin-secret" });
+    app = createApp(new CloneService(db, new HashingEmbedder(), new LLMRouter([new MockProvider()], mockPolicy())), { adminToken: "admin-secret" }, new BillingService(db, { payme: { merchantId: "m1", key: "pk" } }));
     for (const name of ["API A", "API B"]) {
       const r = await call("/admin/tenants", { method: "POST", headers: { "x-admin-token": "admin-secret" }, body: JSON.stringify({ name, plan: "pro" }) });
       expect(r.status).toBe(201);
@@ -137,6 +137,24 @@ describe.skipIf(!url)("HTTP API (Postgres)", () => {
     const app = await call("/app");
     expect(app.headers.get("x-frame-options")).toBe("DENY");
     expect(await app.text()).toContain("AI Clone");
+  });
+
+  it("billing: buyurtma, sozlanmagan provayder, Payme webhook har doim 200", async () => {
+    const order = await call("/v1/billing/orders", { method: "POST", key: apiKey, body: JSON.stringify({ plan: "pro", months: 1, provider: "payme" }) });
+    expect(order.status).toBe(201);
+    expect(((await order.json()) as { checkoutUrl: string }).checkoutUrl).toMatch(/^https:\/\/checkout\.paycom\.uz\//);
+    expect((await call("/v1/billing/orders", { method: "POST", key: apiKey, body: JSON.stringify({ plan: "pro", provider: "click" }) })).status).toBe(503);
+    const summary = (await (await call("/v1/billing", { key: apiKey })).json()) as { plan: string; providers: string[] };
+    expect(summary).toMatchObject({ plan: "pro", providers: ["payme"] });
+
+    const unauth = await call("/payments/payme", { method: "POST", body: JSON.stringify({ id: 5, method: "CheckTransaction", params: { id: "x" } }) });
+    expect(unauth.status).toBe(200);
+    expect(await unauth.json()).toMatchObject({ id: 5, error: { code: -32504 } });
+    const parse = await call("/payments/payme", { method: "POST", body: "{bad" });
+    expect(await parse.json()).toMatchObject({ error: { code: -32700 } });
+
+    const click = await app.request("/payments/click/prepare", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: "click_trans_id=1&merchant_trans_id=2" });
+    expect(await click.json()).toMatchObject({ error: -8 });
   });
 
   it("vidjet skripti va klon sahifasi", async () => {

@@ -1,4 +1,4 @@
-import type { CloneService } from "@ai-clone/db";
+import { PaymentNotConfiguredError, type BillingService, type CloneService } from "@ai-clone/db";
 import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
@@ -59,6 +59,7 @@ const schemas = {
   publicChat: z.object({ visitorId: z.string().regex(/^[\w-]{8,64}$/), message: z.string().min(1).max(2000) }),
   mode: z.object({ mode: z.enum(["bot", "human", "paused"]) }),
   reply: z.object({ text: z.string().min(1).max(4000) }),
+  order: z.object({ plan: z.enum(["creator", "pro", "business"]), months: z.union([z.literal(1), z.literal(3), z.literal(6), z.literal(12)]).default(1), provider: z.enum(["payme", "click"]) }),
   feedback: z.object({ rating: z.union([z.literal(1), z.literal(-1)]), correction: z.string().max(4000).optional() }),
 };
 
@@ -71,12 +72,13 @@ async function body<T extends z.ZodType>(c: Context, schema: T): Promise<z.infer
   return parsed.data;
 }
 
-export function createApp(svc: CloneService, cfg: AppConfig = {}) {
+export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: BillingService) {
   const app = new Hono<Env>();
   const publicLimiter = new RateLimiter(20, 60_000);
 
   app.onError((err, c) => {
     if (err instanceof HTTPException) return c.json({ error: err.message }, err.status);
+    if (err instanceof PaymentNotConfiguredError) return c.json({ error: err.message }, 503);
     if (err.message.includes("topilmadi")) return c.json({ error: err.message }, 404);
     if ((err as { code?: string }).code === "23505") return c.json({ error: "Bunday yozuv allaqachon mavjud" }, 409);
     console.error(err);
@@ -195,7 +197,31 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}) {
     return c.json(await svc.feedback(t(c), c.req.param("id"), f.rating, f.correction));
   });
 
+  const billingOr503 = () => {
+    if (!billing) throw new HTTPException(503, { message: "To'lovlar yoqilmagan" });
+    return billing;
+  };
+  v1.get("/billing", async (c) => c.json(await billingOr503().summary(t(c))));
+  v1.post("/billing/orders", async (c) => {
+    const o = await body(c, schemas.order);
+    return c.json(await billingOr503().createOrder(t(c), o.plan, o.months, o.provider), 201);
+  });
+
   app.route("/v1", v1);
+
+  // --- To'lov tizimlari webhooklari (har doim HTTP 200 — protokol talabi) ---
+  app.post("/payments/payme", async (c) => {
+    const json = await c.req.json().catch(() => null);
+    if (json === null) return c.json({ jsonrpc: "2.0", id: null, error: { code: -32700, message: { uz: "JSON xato", ru: "Ошибка парсинга JSON", en: "Parse error" } } });
+    return c.json(await billingOr503().handlePayme(json, c.req.header("authorization")));
+  });
+  const click = async (c: Context) => {
+    const form = await c.req.parseBody();
+    const params = Object.fromEntries(Object.entries(form).map(([k, v]) => [k, String(v)]));
+    return c.json(await billingOr503().handleClick(params));
+  };
+  app.post("/payments/click/prepare", click);
+  app.post("/payments/click/complete", click);
 
   // --- Ommaviy kanallar: vidjet va klon sahifasi ---
   app.use("/public/*", cors());

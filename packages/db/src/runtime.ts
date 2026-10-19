@@ -1,10 +1,12 @@
 import { AnthropicProvider, DEFAULT_POLICY, HashingEmbedder, LLMRouter, MockProvider, TeiEmbedder, mockPolicy, type Embedder } from "@ai-clone/core";
+import { BillingService, billingConfigFromEnv } from "./billing.js";
 import { createPool, type Db } from "./pool.js";
 import { CloneService } from "./service.js";
 
 export interface Runtime {
   db: Db;
   service: CloneService;
+  billing: BillingService;
   llm: "anthropic" | "mock";
   embedder: Embedder;
 }
@@ -21,5 +23,5 @@ export function createRuntime(env: NodeJS.ProcessEnv = process.env): Runtime {
   const router =
     llm === "anthropic" ? new LLMRouter([new AnthropicProvider({ apiKey: env.ANTHROPIC_API_KEY! })], DEFAULT_POLICY) : new LLMRouter([new MockProvider()], mockPolicy());
   if (llm === "mock") console.warn("⚠️  ANTHROPIC_API_KEY yo'q — MockProvider ishlatilmoqda (javoblar manbadan iqtibos, haqiqiy model emas).");
-  return { db, service: new CloneService(db, embedder, router), llm, embedder };
+  return { db, service: new CloneService(db, embedder, router), billing: new BillingService(db, billingConfigFromEnv(env)), llm, embedder };
 }
