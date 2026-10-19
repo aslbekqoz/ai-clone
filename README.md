@@ -30,6 +30,63 @@
 | 10 | [Pitch deck](docs/10-pitch-deck.md) | 12 slayd matni va investor savollariga javoblar |
 | 11 | [Jamoa va investitsiya](docs/11-jamoa-va-investitsiya.md) | Jamoa rejasi, raundlar, investorlar, data room |
 
+## Kod: MVP (ishlaydigan birinchi versiya)
+
+```
+packages/core   AI yadro: o'zbek matnini normallashtirish (lotin/kirill), chunking, gibrid qidiruv (RRF),
+                persona va uslub prompti, guardrails (eskalatsiya, PII niqoblash), LLM router (fallback,
+                circuit breaker, xarajat hisobi), Claude adapteri, Telegram eksporti parseri
+packages/db     Postgres + pgvector sxemasi, har bir jadvalda RLS, bilim ombori, CloneService
+                (chat, lidlar, human takeover, tuzatish → tasdiqlangan javob, limitlar)
+apps/api        HTTP API (Hono), sayt vidjeti (/widget.js), ommaviy klon sahifasi (/c/<slug>)
+apps/bot        Telegram bot (grammY): suhbat, /forget, egasiga eskalatsiya, /reply /takeover /bot
+```
+
+### Ishga tushirish
+
+```bash
+pnpm install
+docker compose up -d                 # Postgres 16 + pgvector
+cp .env.example .env && set -a && . ./.env && set +a
+pnpm seed                            # demo klon: "Dilnoza (IELTS)" + API kalit
+pnpm dev:api                         # http://localhost:8787/c/dilnoza-demo
+TELEGRAM_BOT_TOKEN=... pnpm dev:bot  # ixtiyoriy: Telegram bot
+```
+
+`ANTHROPIC_API_KEY` bo'lmasa, tizim **MockProvider** bilan ishlaydi. Bu rejimda javob topilgan manbaning birinchi gapi bo'ladi, haqiqiy model emas. Kalit qo'yilsa, Claude ishlaydi: oddiy savollar `claude-haiku-5-5` ga, sotuv va murakkab savollar `claude-sonnet-5-5` ga yo'naltiriladi (`packages/core/src/llm/router.ts`, `DEFAULT_POLICY`).
+
+### Testlar
+
+```bash
+pnpm typecheck
+TEST_DATABASE_URL=postgres://aiclone:aiclone@localhost:5432/aiclone pnpm test   # 66 test, ular orasida RLS izolyatsiyasi ham bor
+```
+
+### API qisqacha
+
+| Metod | Yo'l | Vazifa |
+|---|---|---|
+| POST | `/admin/tenants` (`x-admin-token`) | Tenant va API kalit yaratish |
+| POST | `/v1/clones` | Klon yaratish |
+| PATCH | `/v1/clones/:id/style` | Uslub profilini tahrirlash |
+| POST | `/v1/clones/:id/sources` · `/sources/url` · `/sources/telegram` | Bilim yuklash: matn, sayt yoki Telegram eksporti |
+| POST | `/v1/clones/:id/exemplars` | Uslub namunasi qo'shish |
+| POST | `/v1/clones/:id/chat` | Klon bilan suhbat |
+| GET | `/v1/clones/:id/conversations?filter=escalated` · `/leads?format=csv` · `/stats` | Inbox, lidlar, statistika |
+| POST | `/v1/conversations/:id/mode` · `/reply` | Human takeover va egasining javobi |
+| POST | `/v1/messages/:id/feedback` | 👍/👎 va tuzatish. Tuzatish tasdiqlangan javobga aylanadi |
+| POST/GET | `/public/:slug/chat` · `/public/:slug/updates` | Vidjet uchun ommaviy endpointlar |
+
+Barcha `/v1` so'rovlari `Authorization: Bearer <api kalit>` sarlavhasini talab qiladi.
+
+### MVP'da hali yo'q (keyingi qadamlar)
+
+- Egasining veb-dashboardi. Hozircha API va Telegramdagi `/reply`, `/takeover` buyruqlari orqali boshqariladi.
+- Ovozli xabarlarni tushunish (STT), PDF/DOCX parserlari, YouTube transkriptlari.
+- Payme/Click to'lovlari va tariflarni avtomatik almashtirish. Xabar va xarajat limitlari tayyor (`tenants.monthly_message_limit`, `daily_spend_cap_usd`).
+- So'rovni LLM orqali qayta yozish, reranker va LLM asosidagi eskalatsiya klassifikatori. Hozircha qoidalar asosida ishlaydi.
+- Ko'p klonli Telegram webhook marshrutlash. Hozir bitta bot bitta klonga xizmat qiladi.
+
 ## Moliyaviy model
 
 ```bash

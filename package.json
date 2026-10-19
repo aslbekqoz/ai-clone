@@ -1,0 +1,20 @@
+{
+  "name": "ai-clone",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.28.0",
+  "scripts": {
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "db:migrate": "tsx packages/db/src/migrate.ts",
+    "dev:api": "tsx watch apps/api/src/server.ts",
+    "dev:bot": "tsx watch apps/bot/src/index.ts",
+    "seed": "tsx apps/api/src/seed.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.20.0",
+    "typescript": "~5.9.3",
+    "vitest": "^3.2.7"
+  }
+}

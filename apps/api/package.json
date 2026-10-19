@@ -1,0 +1,13 @@
+{
+  "name": "@ai-clone/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@ai-clone/core": "workspace:*",
+    "@ai-clone/db": "workspace:*",
+    "@hono/node-server": "^1.19.0",
+    "hono": "^4.9.0",
+    "zod": "^4.1.0"
+  }
+}

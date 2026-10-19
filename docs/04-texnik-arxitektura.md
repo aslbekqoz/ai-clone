@@ -238,7 +238,17 @@ type ModelPolicy = { [p in Purpose]: { primary: string; fallbacks: string[]; max
 - Suveren tarif: ochiq modellar (Qwen/Llama) + BGE-M3 UZ GPU'da — chegaradan tashqari qayta ishlash yo'q.
 - Jamoalar, SLA marshrutlash, ommaviy klon marketpleysi, persona versiyalari A/B testlari, biznes uchun white-label.
 
-## 10. Repo tuzilmasi (reja)
+## 10. Amalga oshirish holati (MVP kodi)
+
+Quyidagilar kodda tayyor va testlar bilan tekshirilgan: §3.1 dagi gibrid qidiruv, RRF, normallashtirish va iqtiboslar; §3.2 dagi barqaror va o'zgaruvchan prompt hamda dinamik few-shot; §3.3 dagi grounded rejim, oshkoralik, eskalatsiya, takeover va PII niqoblash; §4 dagi asosiy jadvallar va RLS; §5 dagi router, fallback va circuit breaker; §6 dagi "tuzatish → tasdiqlangan javob" sikli.
+
+Rejadan ataylab chetga chiqilgan joylar:
+- **Drizzle o'rniga sof SQL migratsiyalar va `pg`.** RLS siyosatlari va pgvector operatorlari SQL'da aniqroq ko'rinadi. ORM keyinroq qo'shilishi mumkin.
+- **`halfvec` o'rniga `vector(1024)`.** pgvector 0.6 bilan ham ishlashi uchun. pgvector 0.7+ da `halfvec` ga o'tish xotirani ikki barobar tejaydi.
+- **Oflayn `HashingEmbedder`.** API kalitisiz ishlab chiqish va CI uchun. Prod'da `TEI_URL` (BGE-M3) ishlatiladi; o'xshashlik chegaralari embedderning o'zida saqlanadi.
+- **Eskalatsiya klassifikatori hozircha qoidalar asosida** (UZ/RU/EN kalit iboralar). LLM klassifikatori v1 da qo'shiladi.
+
+## 11. Repo tuzilmasi (reja)
 
 ```
 ai-clone/
