@@ -1,11 +1,12 @@
 import type { SpeechToText } from "@ai-clone/core";
-import type { CloneService, TelegramChannels } from "@ai-clone/db";
+import type { CloneService, TelegramChannels, VoiceService } from "@ai-clone/db";
 import type { Bot, ApiClientOptions } from "grammy";
 import type { Update, UserFromGetMe } from "grammy/types";
 import { createBot } from "./bot.js";
 
 export interface WebhookDispatcherOptions {
   stt?: SpeechToText | null;
+  voice?: VoiceService | null;
   /** Testlar uchun: Telegram API so'rovlarini almashtirish. */
   client?: ApiClientOptions;
   /** Bot nusxasi shuncha vaqt keshlanadi — klon sozlamalari o'zgarsa, keyin yangilanadi. */
@@ -34,6 +35,7 @@ export function createWebhookDispatcher(svc: CloneService, channels: TelegramCha
         clone,
         botInfo: resolved.botInfo as unknown as UserFromGetMe,
         ...(opts.stt ? { stt: opts.stt } : {}),
+        ...(opts.voice ? { voice: opts.voice } : {}),
         ...(opts.client ? { client: opts.client } : {}),
       });
       entry = { bot, at: Date.now() };

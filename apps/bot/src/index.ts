@@ -19,7 +19,7 @@ if (!target) {
 }
 const clone = (await rt.service.getClone(target.tenantId, target.cloneId))!;
 
-const bot = createBot(rt.service, { token, tenantId: target.tenantId, clone, ...(rt.stt ? { stt: rt.stt } : {}) });
+const bot = createBot(rt.service, { token, tenantId: target.tenantId, clone, voice: rt.voice, ...(rt.stt ? { stt: rt.stt } : {}) });
 await bot.api.setMyCommands([
   { command: "start", description: "Boshlash" },
   { command: "forget", description: "Mening ma'lumotlarimni o'chirish" },

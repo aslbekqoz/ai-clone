@@ -94,7 +94,7 @@ function cloneForm(){const f={slug:h("input",{placeholder:"dilnoza",required:tru
 
 function selectClone(id){clone=clones.find(c=>c.id===id)||clones[0]||null;store.set(CLONE,clone&&clone.id);render();}
 
-const TABS=[["inbox","Inbox"],["knowledge","Bilim"],["style","Uslub"],["leads","Lidlar"],["stats","Statistika"],["connect","Ulash"],["billing","Tarif"],["settings","Sozlamalar"]];
+const TABS=[["inbox","Inbox"],["knowledge","Bilim"],["style","Uslub"],["leads","Lidlar"],["stats","Statistika"],["connect","Ulash"],["voice","Ovoz"],["billing","Tarif"],["settings","Sozlamalar"]];
 function render(){clearInterval(timer);const app=$("#app");app.replaceChildren();
   if(!apiKey){app.append(renderLogin());return;}
   const sel=h("select",{"aria-label":"Klon",onchange:(e)=>e.target.value==="__new"?(clone=null,render()):selectClone(e.target.value)},
@@ -104,7 +104,7 @@ function render(){clearInterval(timer);const app=$("#app");app.replaceChildren()
   if(!clone){main.append(h("div",{style:"max-width:520px"},cloneForm()));return;}
   main.append(h("nav",{},TABS.map(([id,label])=>h("button",{class:tab===id?"on":"",onclick:()=>{tab=id;render();}},label))));
   const view=h("div");main.append(view);
-  ({inbox:viewInbox,knowledge:viewKnowledge,style:viewStyle,leads:viewLeads,stats:viewStats,connect:viewConnect,billing:viewBilling,settings:viewSettings})[tab](view).catch(e=>toast(e.message,true));}
+  ({inbox:viewInbox,knowledge:viewKnowledge,style:viewStyle,leads:viewLeads,stats:viewStats,connect:viewConnect,voice:viewVoice,billing:viewBilling,settings:viewSettings})[tab](view).catch(e=>toast(e.message,true));}
 
 // --- Inbox ---
 let openConv=null,onlyAlerts=false;
@@ -225,6 +225,47 @@ async function viewConnect(view){const tgCard=h("div",{class:"card"}),igCard=h("
     render(igCard,"instagram","Instagram DM","Instagram professional akkaunt, Instagram Login tokeni (instagram_business_manage_messages ruxsati bilan).",[["accessToken","Instagram access token"]]);
     render(waCard,"whatsapp","WhatsApp","WhatsApp Cloud API: Meta Business'dagi phone_number_id va doimiy (system user) token.",[["phoneNumberId","phone_number_id"],["accessToken","Access token"]]);}
   await Promise.all([loadTg(),loadMeta()]);}
+
+// --- Ovoz kloni ---
+/** Mikrofondan yozib olish (MediaRecorder) yoki fayl tanlash — natija Blob. */
+function recorder(label){let blob=null,rec=null,chunks=[];const status=h("span",{class:"small muted"},"yozilmagan");
+  const file=h("input",{type:"file",accept:"audio/*",onchange:()=>{blob=file.files[0]||null;status.textContent=blob?"fayl: "+blob.name:"yozilmagan";}});
+  const btn=h("button",{type:"button",class:"ghost small",onclick:guard(async()=>{
+    if(rec){rec.stop();return;}
+    if(!navigator.mediaDevices){toast("Brauzer mikrofonni qo'llamaydi — fayl tanlang",true);return;}
+    const stream=await navigator.mediaDevices.getUserMedia({audio:true});chunks=[];rec=new MediaRecorder(stream);
+    rec.ondataavailable=(e)=>chunks.push(e.data);
+    rec.onstop=()=>{blob=new Blob(chunks,{type:rec.mimeType||"audio/webm"});stream.getTracks().forEach(t=>t.stop());rec=null;btn.textContent="🎙 Qayta yozish";status.textContent="yozildi ("+Math.round(blob.size/1024)+" KB)";};
+    rec.start();btn.textContent="⏹ To'xtatish";status.textContent="yozilmoqda…";})},"🎙 Yozish");
+  return {el:h("div",{style:"margin:6px 0 12px"},h("label",{},label),h("div",{class:"row"},btn,status),h("div",{style:"margin-top:6px"},file)),get:()=>blob};}
+
+async function viewVoice(view){let st;try{st=await api("/v1/clones/"+clone.id+"/voice");}catch(e){view.append(h("div",{class:"card"},e.message));return;}
+  const quota=h("p",{class:"small muted"},"Ovoz daqiqalari: "+st.minutesUsed+" / "+st.minutesIncluded+" (shu oy)"+(st.minutesIncluded===0?" — ovozli javoblar Pro va Business tariflarida":""));
+  if(!st.available){view.append(h("div",{class:"card"},h("h3",{},"Ovoz kloni"),h("p",{class:"muted"},"Serverda ovoz provayderi sozlanmagan.")));return;}
+  if(!st.enrolled){const intro=h("div",{class:"card",style:"max-width:720px"},h("h3",{},"Klonga sizning ovozingiz"),
+      h("p",{class:"muted"},"Klon javoblarini sizning ovozingizda o'qiydi. Buning uchun roziligingiz yozib olinadi va istalgan vaqtda qaytarib olishingiz mumkin. Faqat o'z ovozingizni klonlang."),
+      h("button",{onclick:guard(async()=>{const c=await post("/v1/clones/"+clone.id+"/voice/consent",{});step2(c);})},"1. Rozilik matnini olish"));
+    view.append(intro);
+    function step2(c){const consentRec=recorder("2. Quyidagi matnni ovoz chiqarib o'qing va yozib oling:");const s1=recorder("3. Ovoz namunasi — 1–2 daqiqa tabiiy gapiring (masalan, kanalingiz haqida):");
+      const s2=recorder("Qo'shimcha namuna (ixtiyoriy):");
+      intro.replaceChildren(h("h3",{},"Ovozni yozib olish"),h("pre",{class:"code",style:"white-space:pre-wrap;font-size:15px"},c.script),
+        h("p",{class:"small muted"},"Matn "+new Date(c.expiresAt).toLocaleTimeString("uz-UZ")+" gacha amal qiladi."),consentRec.el,s1.el,s2.el,
+        h("button",{onclick:guard(async()=>{const consent=consentRec.get(),samples=[s1.get(),s2.get()].filter(Boolean);
+          if(!consent||!samples.length){toast("Rozilik yozuvi va kamida bitta namuna kerak",true);return;}
+          const fd=new FormData();fd.append("consentId",c.consentId);fd.append("consent",consent,"rozilik.webm");samples.forEach((b,i)=>fd.append("samples",b,"namuna-"+(i+1)+".webm"));
+          await api("/v1/clones/"+clone.id+"/voice",{method:"POST",body:fd});toast("Ovoz yaratildi ✅");render();})},"4. Ovozni yaratish"));}
+    view.append(quota);return;}
+  const mode=h("select",{"aria-label":"Ovoz rejimi"},[["off","O'chiq — faqat matn"],["voice_in","Foydalanuvchi ovozli yozsa, ovozda javob"],["always","Har doim ovozda ham javob"]].map(([v,l])=>h("option",{value:v,selected:st.mode===v},l)));
+  const text=h("input",{value:"Assalomu alaykum! Bu mening AI-klonim.",maxlength:"300"});const player=h("audio",{controls:true,style:"width:100%;margin-top:8px;display:none"});
+  view.append(h("div",{class:"grid"},
+    h("div",{class:"card"},h("h3",{},"Ovoz rejimi"),h("p",{class:"small muted"},"Ovoz yaratilgan: "+fmt(st.enrolledAt)+" · "+st.provider),mode,
+      h("div",{style:"margin-top:10px"},h("button",{onclick:guard(async()=>{await patch("/v1/clones/"+clone.id+"/voice",{mode:mode.value});toast("Saqlandi");})},"Saqlash")),quota),
+    h("div",{class:"card"},h("h3",{},"Eshitib ko'rish"),text,h("div",{style:"margin-top:10px"},h("button",{class:"ghost",onclick:guard(async()=>{
+        const res=await fetch("/v1/clones/"+clone.id+"/voice/preview",{method:"POST",headers:{"authorization":"Bearer "+apiKey,"content-type":"application/json"},body:JSON.stringify({text:text.value})});
+        if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error||"Xato");}
+        player.src=URL.createObjectURL(await res.blob());player.style.display="block";player.play().catch(()=>{});})},"▶ Tinglash")),player),
+    h("div",{class:"card"},h("h3",{},"Rozilikni qaytarib olish"),h("p",{class:"small muted"},"Ovoz provayderdan o'chiriladi, rozilik yozuvi tozalanadi, klon faqat matnda javob beradi."),
+      h("button",{class:"ghost",onclick:guard(async()=>{if(!confirm("Ovoz kloni butunlay o'chirilsinmi?"))return;await api("/v1/clones/"+clone.id+"/voice",{method:"DELETE"});toast("Ovoz o'chirildi");render();})},"Ovozni o'chirish"))));}
 
 // --- Tarif ---
 const PLAN_NAMES={free:"Free",creator:"Creator",pro:"Pro",business:"Business",enterprise:"Enterprise"};

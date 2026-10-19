@@ -23,3 +23,4 @@ export * from "./guardrails/classifier.js";
 export * from "./rag/rewrite.js";
 export * from "./rag/rerank.js";
 export * from "./channels/meta.js";
+export * from "./speech/voice.js";

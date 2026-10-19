@@ -278,7 +278,7 @@ describe.skipIf(!url)("HTTP API (Postgres)", () => {
       const sig = "sha256=" + createHmac("sha256", secret).update(raw).digest("hex");
       return app.request("/meta/webhook", { method: "POST", headers: { "content-type": "application/json", "x-hub-signature-256": sig }, body: raw });
     };
-    const igPayload = { object: "instagram", entry: [{ id: "17841400000000001", messaging: [{ sender: { id: "IGSID-77" }, recipient: { id: "17841400000000001" }, message: { mid: "ig-m-1", text: "Speaking bo'limida eng muhimi nima?" } }] }] };
+    const igPayload = { object: "instagram", entry: [{ id: "17841400000000001", messaging: [{ sender: { id: "IGSID-77" }, recipient: { id: "17841400000000001" }, message: { mid: `ig-m-1-${slug}`, text: "Speaking bo'limida eng muhimi nima?" } }] }] };
     expect((await post(igPayload, "boshqa")).status).toBe(401);
     const r1 = await post(igPayload);
     expect(await r1.json()).toMatchObject({ handled: 1, skipped: 0 });
@@ -291,7 +291,7 @@ describe.skipIf(!url)("HTTP API (Postgres)", () => {
 
     const waPayload = {
       object: "whatsapp_business_account",
-      entry: [{ changes: [{ field: "messages", value: { metadata: { phone_number_id: "106540352242922" }, contacts: [{ wa_id: "998935551122", profile: { name: "Aziz" } }], messages: [{ from: "998935551122", id: "wamid.in-1", type: "text", text: { body: "Speaking uchun maslahat bering" } }] } }] }],
+      entry: [{ changes: [{ field: "messages", value: { metadata: { phone_number_id: "106540352242922" }, contacts: [{ wa_id: "998935551122", profile: { name: "Aziz" } }], messages: [{ from: "998935551122", id: `wamid.in-1-${slug}`, type: "text", text: { body: "Speaking uchun maslahat bering" } }] } }] }],
     };
     expect(await (await post(waPayload)).json()).toMatchObject({ handled: 1 });
     const waReply = graphCalls.filter((c) => c.url.endsWith("/106540352242922/messages")).at(-1)!;
@@ -305,7 +305,7 @@ describe.skipIf(!url)("HTTP API (Postgres)", () => {
     expect(graphCalls.at(-1)?.body).toMatchObject({ to: "+998935551122", text: { body: "Salom, Aziz!" } });
 
     expect(await (await call(`/v1/clones/${cloneId}/channels/instagram`, { method: "DELETE", key: apiKey })).json()).toEqual({ ok: true });
-    expect(await (await post({ ...igPayload, entry: [{ ...igPayload.entry[0], messaging: [{ ...igPayload.entry[0]!.messaging[0], message: { mid: "ig-m-2", text: "salom" } }] }] })).json()).toMatchObject({ handled: 0, skipped: 1 });
+    expect(await (await post({ ...igPayload, entry: [{ ...igPayload.entry[0], messaging: [{ ...igPayload.entry[0]!.messaging[0], message: { mid: `ig-m-2-${slug}`, text: "salom" } }] }] })).json()).toMatchObject({ handled: 0, skipped: 1 });
   });
 
   it("vidjet skripti va klon sahifasi", async () => {

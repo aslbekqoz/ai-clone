@@ -36,7 +36,7 @@ describe("bot: ovozli xabar oqimi", () => {
     persona: { name: "Dilnoza", bio: "", languages: ["uz"], grounded: true, disclosure: "🤖 AI-klon", style: { tone: "", address: "siz", emoji: "rare", length: "short", signaturePhrases: [], avoidTopics: [] } },
   };
 
-  function setup(stt?: MockStt) {
+  function setup(stt?: MockStt, voiceReply?: Uint8Array) {
     const chats: { message: string; meta?: unknown }[] = [];
     const svc = {
       chat: async (_t: string, _c: string, input: { message: string; meta?: unknown }) => {
@@ -44,11 +44,13 @@ describe("bot: ovozli xabar oqimi", () => {
         return { conversationId: "conv-1", reply: "Narxi 1 200 000 so'm [S1]", messageId: "m1", mode: "bot", citations: [{ id: "S1", chunkId: "c", title: "Kurslar" }], escalated: false, escalationReasons: [], leadCaptured: false, limitReached: false };
       },
     } as unknown as CloneService;
+    const voice = voiceReply ? ({ synthesizeReply: async () => ({ audio: voiceReply, mimeType: "audio/mpeg" }) } as never) : undefined;
     const bot = createBot(svc, {
       token: "TOKEN",
       tenantId: "t1",
       clone,
       ...(stt ? { stt } : {}),
+      ...(voice ? { voice } : {}),
       fetchFn: okFetch,
       botInfo: { id: 1, is_bot: true, first_name: "Dilnoza AI", username: "dilnoza_ai_bot", can_join_groups: false, can_read_all_group_messages: false, supports_inline_queries: false, can_connect_to_business: false, has_main_web_app: false },
     });
@@ -73,6 +75,13 @@ describe("bot: ovozli xabar oqimi", () => {
     const texts = sent.filter((s) => s.method === "sendMessage").map((s) => s.payload.text);
     expect(texts[0]).toBe("🎙 «Kurs narxi qancha?»");
     expect(texts[1]).toBe("Narxi 1 200 000 so'm\n\n📚 Manba:\n• Kurslar");
+  });
+
+  it("ovoz kloni yoqilgan bo'lsa, matndan keyin ovozli javob yuboriladi", async () => {
+    const { bot, sent } = setup(new MockStt("Kurs narxi qancha?"), new Uint8Array([1, 2, 3]));
+    await bot.handleUpdate(voiceUpdate());
+    const methods = sent.map((s) => s.method).filter((m) => m !== "sendChatAction");
+    expect(methods).toEqual(["getFile", "sendMessage", "sendMessage", "sendVoice"]);
   });
 
   it("STT sozlanmagan bo'lsa, yozib yuborishni so'raydi", async () => {

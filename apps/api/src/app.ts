@@ -1,6 +1,16 @@
 import { MAX_FILE_BYTES, UnsupportedFileError, fetchYouTubeTranscript, parseFile, parseMetaWebhook, verifyMetaSignature, type SpeechToText } from "@ai-clone/core";
 import { createWebhookDispatcher } from "@ai-clone/bot";
-import { MetaConnectError, PaymentNotConfiguredError, TelegramConnectError, type BillingService, type CloneService, type MetaChannels, type TelegramChannels } from "@ai-clone/db";
+import {
+  MetaConnectError,
+  PaymentNotConfiguredError,
+  TelegramConnectError,
+  VoiceError,
+  type BillingService,
+  type CloneService,
+  type MetaChannels,
+  type TelegramChannels,
+  type VoiceService,
+} from "@ai-clone/db";
 import { processMetaInbound } from "./meta-webhook.js";
 import type { ApiClientOptions } from "grammy";
 import type { Update } from "grammy/types";
@@ -25,6 +35,7 @@ export interface AppConfig {
   telegramClient?: ApiClientOptions;
   /** Instagram DM va WhatsApp (Meta ilovasi). */
   meta?: { channels: MetaChannels; appSecret: string; verifyToken: string } | null;
+  voice?: VoiceService | null;
 }
 
 type Env = { Variables: { tenantId: string } };
@@ -74,6 +85,8 @@ const schemas = {
   mode: z.object({ mode: z.enum(["bot", "human", "paused"]) }),
   reply: z.object({ text: z.string().min(1).max(4000) }),
   order: z.object({ plan: z.enum(["creator", "pro", "business"]), months: z.union([z.literal(1), z.literal(3), z.literal(6), z.literal(12)]).default(1), provider: z.enum(["payme", "click"]) }),
+  voiceMode: z.object({ mode: z.enum(["off", "voice_in", "always"]) }),
+  voicePreview: z.object({ text: z.string().min(1).max(300) }),
   instagram: z.object({ accessToken: z.string().min(20).max(1000) }),
   whatsapp: z.object({ phoneNumberId: z.string().regex(/^\d{5,20}$/), accessToken: z.string().min(20).max(1000) }),
   telegramToken: z.object({ token: z.string().min(10).max(100) }),
@@ -96,7 +109,7 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
   app.onError((err, c) => {
     if (err instanceof HTTPException) return c.json({ error: err.message }, err.status);
     if (err instanceof PaymentNotConfiguredError) return c.json({ error: err.message }, 503);
-    if (err instanceof TelegramConnectError || err instanceof MetaConnectError) return c.json({ error: err.message }, err.status);
+    if (err instanceof TelegramConnectError || err instanceof MetaConnectError || err instanceof VoiceError) return c.json({ error: err.message }, err.status);
     if (err.message.includes("topilmadi")) return c.json({ error: err.message }, 404);
     if ((err as { code?: string }).code === "23505") return c.json({ error: "Bunday yozuv allaqachon mavjud" }, 409);
     console.error(err);
@@ -291,6 +304,54 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
     return c.json({ ok: await metaOr503().disconnect(t(c), c.req.param("id"), c.req.param("kind") as "instagram" | "whatsapp") });
   });
 
+  // --- Ovoz kloni (rozilik → yozuv → rejim → qaytarib olish) ---
+  const voiceOr503 = () => {
+    if (!cfg.voice) throw new HTTPException(503, { message: "Ovoz kloni yoqilmagan" });
+    return cfg.voice;
+  };
+  const clip = async (f: unknown, fallback: string) => {
+    if (!(f instanceof File)) throw new HTTPException(422, { message: `${fallback} fayli kerak` });
+    return { data: new Uint8Array(await f.arrayBuffer()), filename: f.name || `${fallback}.webm`, mimeType: f.type || "audio/webm" };
+  };
+  v1.get("/clones/:id/voice", async (c) => {
+    await cloneOr404(c);
+    return c.json(await voiceOr503().status(t(c), c.req.param("id")));
+  });
+  v1.post("/clones/:id/voice/consent", async (c) => {
+    await cloneOr404(c);
+    return c.json(await voiceOr503().issueConsent(t(c), c.req.param("id")), 201);
+  });
+  v1.post("/clones/:id/voice", async (c) => {
+    await cloneOr404(c);
+    const form = await c.req.parseBody({ all: true });
+    const consentId = typeof form.consentId === "string" ? form.consentId : "";
+    const sampleFiles = ([] as unknown[]).concat(form.samples ?? form["samples[]"] ?? []);
+    const samples = await Promise.all(sampleFiles.map((f, i) => clip(f, `namuna-${i + 1}`)));
+    const out = await voiceOr503().enroll(t(c), c.req.param("id"), {
+      consentId,
+      consent: await clip(form.consent, "rozilik"),
+      samples,
+      ...(c.req.header("x-forwarded-for") ? { ip: c.req.header("x-forwarded-for")!.split(",")[0]!.trim() } : {}),
+    });
+    return c.json(out, 201);
+  });
+  v1.patch("/clones/:id/voice", async (c) => {
+    await cloneOr404(c);
+    const { mode } = await body(c, schemas.voiceMode);
+    await voiceOr503().setMode(t(c), c.req.param("id"), mode);
+    return c.json({ ok: true, mode });
+  });
+  v1.delete("/clones/:id/voice", async (c) => {
+    await cloneOr404(c);
+    return c.json({ ok: await voiceOr503().revoke(t(c), c.req.param("id")) });
+  });
+  v1.post("/clones/:id/voice/preview", async (c) => {
+    await cloneOr404(c);
+    const { text } = await body(c, schemas.voicePreview);
+    const out = await voiceOr503().preview(t(c), c.req.param("id"), text);
+    return c.body(out.audio as unknown as ArrayBuffer, 200, { "content-type": out.mimeType, "cache-control": "no-store" });
+  });
+
   const billingOr503 = () => {
     if (!billing) throw new HTTPException(503, { message: "To'lovlar yoqilmagan" });
     return billing;
@@ -305,7 +366,7 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
 
   // --- Telegram webhook: har bir klonning boti uchun alohida manzil va sir ---
   const dispatch = cfg.telegram
-    ? createWebhookDispatcher(svc, cfg.telegram, { stt: cfg.stt ?? null, ...(cfg.telegramClient ? { client: cfg.telegramClient } : {}) })
+    ? createWebhookDispatcher(svc, cfg.telegram, { stt: cfg.stt ?? null, voice: cfg.voice ?? null, ...(cfg.telegramClient ? { client: cfg.telegramClient } : {}) })
     : null;
   app.post("/telegram/:id", async (c) => {
     if (!dispatch) return c.json({ error: "Telegram sozlanmagan" }, 404);

@@ -65,7 +65,7 @@ Ikkalasi ham xato bersa, tizim qoidalar asosidagi tekshiruvga qaytadi. `TEI_RERA
 
 ```bash
 pnpm typecheck
-TEST_DATABASE_URL=postgres://aiclone:aiclone@localhost:5432/aiclone pnpm test   # 125 test: RLS izolyatsiyasi, to'lov, ovoz, fayl, LLM qadamlari, Telegram, Instagram va WhatsApp ham bor
+TEST_DATABASE_URL=postgres://aiclone:aiclone@localhost:5432/aiclone pnpm test   # 139 test: RLS, to'lov, ovoz (STT va klon), fayl, LLM qadamlari, Telegram, Instagram, WhatsApp
 ```
 
 ### API qisqacha
@@ -88,6 +88,7 @@ TEST_DATABASE_URL=postgres://aiclone:aiclone@localhost:5432/aiclone pnpm test   
 | GET/POST/DELETE | `/v1/clones/:id/telegram` | Klonning o'z Telegram botini ulash yoki uzish |
 | POST | `/telegram/:id` | Telegram webhook (`X-Telegram-Bot-Api-Secret-Token` bilan) |
 | GET/POST/DELETE | `/v1/clones/:id/channels` · `/channels/instagram` · `/channels/whatsapp` | Instagram DM va WhatsApp Cloud API kanallarini ulash |
+| GET/POST/PATCH/DELETE | `/v1/clones/:id/voice` · `/voice/consent` · `/voice/preview` | Ovoz kloni: rozilik matni, yozib olish, rejim, eshitib ko'rish, qaytarib olish |
 | GET/POST | `/meta/webhook` | Meta webhooki: tasdiqlash (`hub.challenge`) va `X-Hub-Signature-256` imzosi bilan xabarlar |
 
 ### Telegram: ikki rejim
@@ -128,9 +129,21 @@ Meta ilovasining webhook manzili `<PUBLIC_BASE_URL>/meta/webhook` bo'ladi, tasdi
 - **24 soatlik qoida:** Meta erkin matnli javobga faqat foydalanuvchining oxirgi xabaridan keyingi 24 soat ichida ruxsat beradi. Egasining kech javobi `delivered: false` qaytaradi.
 - **Prod uchun Meta App Review kerak.**
 
+### Ovoz kloni
+
+Egasi dashboarddagi **Ovoz** bo'limida jarayonni boshlaydi:
+1. Har safar yangi tasdiqlash kodi bo'lgan rozilik matnini oladi va uni o'qib, yozib oladi.
+2. 1–2 daqiqalik ovoz namunasini yuklaydi.
+
+Keyin tizim quyidagicha ishlaydi:
+- **Rozilik tekshiruvi:** yozuv STT orqali matnga aylantiriladi. Unda kod va "roziman" so'zi bo'lmasa, ovoz yaratilmaydi. Eski yozuvni qayta ishlatib bo'lmaydi, matn 30 daqiqa amal qiladi.
+- **Javob rejimlari:** o'chiq; foydalanuvchi ovozli yozsa ovozda javob; har doim ovozda ham javob. Birinchi ovozli javob "Men …ning AI-kloniman" deb boshlanadi.
+- **Kvota:** Pro tarifida oyiga 30 daqiqa, Business'da 120 daqiqa. Kvota tugasa, javob faqat matnda boradi.
+- **Biometrik ma'lumot:** rozilik yozuvi faqat bazada saqlanadi, ilova roli uni o'qiy olmaydi. Rozilik qaytarib olinsa, ovoz provayderdan o'chiriladi va yozuv tozalanadi.
+- **Huquqiy cheklov:** 2026-yil mart o'zgartirishiga ko'ra, UZ fuqarolari biometrik ma'lumotlari faqat O'zbekistonda qayta ishlanadi. Shuning uchun `uz` regionidagi tenantlar uchun xorijiy provayder (ElevenLabs) sukut bo'yicha bloklanadi. Yechim: mahalliy TTS provayderi (`VoiceCloner` interfeysi) yoki yurist xulosasi bilan `VOICE_ALLOW_CROSS_BORDER=1`.
+
 ### Keyingi qadamlar (v1–v2, `docs/02-mahsulot-prd.md`)
 
-- Ovoz klonida javob berish (TTS): rozilik oqimi va biometrik ma'lumotni UZ serverida saqlash bilan.
 - Klon monetizatsiyasi: obunachilar klonga to'laydi, egasiga to'lov o'tkaziladi.
 - Skanerlangan PDF'lar uchun OCR; Telegram kanalini avtomatik sinxronlash.
 - Webhook yangilanishlarini navbat (pg-boss) orqali qayta ishlash. Hozir javob webhook so'rovi ichida tayyorlanadi.

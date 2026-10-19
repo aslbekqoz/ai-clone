@@ -1,10 +1,11 @@
-import { AnthropicProvider, DEFAULT_POLICY, ElevenLabsStt, HashingEmbedder, LLMRouter, MockProvider, TeiEmbedder, TeiReranker, mockPolicy, type Embedder, type SpeechToText } from "@ai-clone/core";
+import { AnthropicProvider, DEFAULT_POLICY, ElevenLabsStt, ElevenLabsVoice, HashingEmbedder, LLMRouter, MockProvider, TeiEmbedder, TeiReranker, mockPolicy, type Embedder, type SpeechToText } from "@ai-clone/core";
 import { BillingService, billingConfigFromEnv } from "./billing.js";
 import { parseSecretKey } from "./crypto.js";
 import { createPool, type Db } from "./pool.js";
 import { MetaChannels } from "./meta-channels.js";
 import { TelegramChannels } from "./telegram-channels.js";
 import { CloneService } from "./service.js";
+import { VoiceService } from "./voice.js";
 
 export interface Runtime {
   db: Db;
@@ -18,6 +19,8 @@ export interface Runtime {
   telegram: TelegramChannels | null;
   /** CHANNEL_SECRET_KEY va META_APP_SECRET bo'lsa — Instagram DM va WhatsApp. */
   meta: { channels: MetaChannels; appSecret: string; verifyToken: string } | null;
+  /** Ovoz kloni (rozilik bilan). UZ tenantlari uchun xorijiy provayder VOICE_ALLOW_CROSS_BORDER=1 talab qiladi. */
+  voice: VoiceService;
 }
 
 /**
@@ -46,5 +49,7 @@ export function createRuntime(env: NodeJS.ProcessEnv = process.env): Runtime {
     env.CHANNEL_SECRET_KEY && env.META_APP_SECRET
       ? { channels: new MetaChannels(db, parseSecretKey(env.CHANNEL_SECRET_KEY)), appSecret: env.META_APP_SECRET, verifyToken: env.META_VERIFY_TOKEN ?? "" }
       : null;
-  return { db, service, telegram, meta, billing: new BillingService(db, billingConfigFromEnv(env)), llm, embedder, stt };
+  const cloner = env.ELEVENLABS_API_KEY ? new ElevenLabsVoice(env.ELEVENLABS_API_KEY, env.ELEVENLABS_TTS_MODEL ?? "eleven_v3") : null;
+  const voice = new VoiceService(db, cloner, stt, { allowCrossBorder: env.VOICE_ALLOW_CROSS_BORDER === "1" });
+  return { db, service, telegram, meta, voice, billing: new BillingService(db, billingConfigFromEnv(env)), llm, embedder, stt };
 }

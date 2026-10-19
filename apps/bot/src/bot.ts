@@ -1,6 +1,6 @@
 import { stripCitationMarkers, type SpeechToText } from "@ai-clone/core";
-import type { CloneRecord, CloneService } from "@ai-clone/db";
-import { Bot, type ApiClientOptions, type Context } from "grammy";
+import type { CloneRecord, CloneService, VoiceService } from "@ai-clone/db";
+import { Bot, InputFile, type ApiClientOptions, type Context } from "grammy";
 import type { UserFromGetMe } from "grammy/types";
 import { escalationNotice, parseOwnerCommand } from "./owner-commands.js";
 import { transcribeTelegramFile, VOICE_REPLIES } from "./voice.js";
@@ -11,6 +11,8 @@ export interface BotConfig {
   clone: CloneRecord;
   /** Yo'q bo'lsa, ovozli xabarlarga "yozib yuboring" deb javob beriladi. */
   stt?: SpeechToText;
+  /** Egasining ovozida javob (rozilik va kvota VoiceService ichida tekshiriladi). */
+  voice?: VoiceService;
   /** Testlar uchun: bot ma'lumoti (getMe chaqirilmaydi) va fayl yuklash funksiyasi. */
   botInfo?: UserFromGetMe;
   fetchFn?: typeof fetch;
@@ -62,6 +64,15 @@ export function createBot(svc: CloneService, cfg: BotConfig): Bot {
       const sources = out.citations.map((c) => (c.url ? `• ${c.title}: ${c.url}` : `• ${c.title}`));
       const text = stripCitationMarkers(out.reply);
       await ctx.reply(sources.length ? `${text}\n\n📚 Manba:\n${sources.join("\n")}` : text, { link_preview_options: { is_disabled: true } });
+      if (cfg.voice) {
+        // Ovoz qo'shimcha: xato bo'lsa, matnli javob baribir yetkazilgan.
+        try {
+          const audio = await cfg.voice.synthesizeReply(tenantId, clone.id, { conversationId: out.conversationId, text, userSentVoice: Boolean(voice) });
+          if (audio) await ctx.replyWithVoice(new InputFile(audio.audio, "javob.mp3"));
+        } catch (err) {
+          console.error("Ovozli javob tayyorlanmadi:", (err as Error).message);
+        }
+      }
     }
     if (ownerChatId && (out.escalated || out.leadCaptured || out.mode !== "bot")) {
       await bot.api
