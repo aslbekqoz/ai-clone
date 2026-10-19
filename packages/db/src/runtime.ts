@@ -2,6 +2,7 @@ import { AnthropicProvider, DEFAULT_POLICY, ElevenLabsStt, HashingEmbedder, LLMR
 import { BillingService, billingConfigFromEnv } from "./billing.js";
 import { parseSecretKey } from "./crypto.js";
 import { createPool, type Db } from "./pool.js";
+import { MetaChannels } from "./meta-channels.js";
 import { TelegramChannels } from "./telegram-channels.js";
 import { CloneService } from "./service.js";
 
@@ -15,6 +16,8 @@ export interface Runtime {
   stt: SpeechToText | null;
   /** CHANNEL_SECRET_KEY va PUBLIC_BASE_URL bo'lsa — har bir klon o'z Telegram botini ulaydi. */
   telegram: TelegramChannels | null;
+  /** CHANNEL_SECRET_KEY va META_APP_SECRET bo'lsa — Instagram DM va WhatsApp. */
+  meta: { channels: MetaChannels; appSecret: string; verifyToken: string } | null;
 }
 
 /**
@@ -39,5 +42,9 @@ export function createRuntime(env: NodeJS.ProcessEnv = process.env): Runtime {
     ...(smartOn ? { smart: { classifier: true, rewrite: true } } : {}),
   });
   const telegram = env.CHANNEL_SECRET_KEY && env.PUBLIC_BASE_URL ? new TelegramChannels(db, parseSecretKey(env.CHANNEL_SECRET_KEY), env.PUBLIC_BASE_URL) : null;
-  return { db, service, telegram, billing: new BillingService(db, billingConfigFromEnv(env)), llm, embedder, stt };
+  const meta =
+    env.CHANNEL_SECRET_KEY && env.META_APP_SECRET
+      ? { channels: new MetaChannels(db, parseSecretKey(env.CHANNEL_SECRET_KEY)), appSecret: env.META_APP_SECRET, verifyToken: env.META_VERIFY_TOKEN ?? "" }
+      : null;
+  return { db, service, telegram, meta, billing: new BillingService(db, billingConfigFromEnv(env)), llm, embedder, stt };
 }

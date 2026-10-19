@@ -65,7 +65,7 @@ Ikkalasi ham xato bersa, tizim qoidalar asosidagi tekshiruvga qaytadi. `TEI_RERA
 
 ```bash
 pnpm typecheck
-TEST_DATABASE_URL=postgres://aiclone:aiclone@localhost:5432/aiclone pnpm test   # 120 test: RLS izolyatsiyasi, to'lov, ovoz, fayl, LLM qadamlari va Telegram webhook ham bor
+TEST_DATABASE_URL=postgres://aiclone:aiclone@localhost:5432/aiclone pnpm test   # 125 test: RLS izolyatsiyasi, to'lov, ovoz, fayl, LLM qadamlari, Telegram, Instagram va WhatsApp ham bor
 ```
 
 ### API qisqacha
@@ -87,6 +87,8 @@ TEST_DATABASE_URL=postgres://aiclone:aiclone@localhost:5432/aiclone pnpm test   
 | POST | `/payments/payme` · `/payments/click/prepare` · `/payments/click/complete` | To'lov tizimlari webhooklari |
 | GET/POST/DELETE | `/v1/clones/:id/telegram` | Klonning o'z Telegram botini ulash yoki uzish |
 | POST | `/telegram/:id` | Telegram webhook (`X-Telegram-Bot-Api-Secret-Token` bilan) |
+| GET/POST/DELETE | `/v1/clones/:id/channels` · `/channels/instagram` · `/channels/whatsapp` | Instagram DM va WhatsApp Cloud API kanallarini ulash |
+| GET/POST | `/meta/webhook` | Meta webhooki: tasdiqlash (`hub.challenge`) va `X-Hub-Signature-256` imzosi bilan xabarlar |
 
 ### Telegram: ikki rejim
 
@@ -117,9 +119,17 @@ Barcha `/v1` so'rovlari `Authorization: Bearer <api kalit>` sarlavhasini talab q
 
 > YouTube: avval subtitrlar olinadi (o'zbek → rus → ingliz). Subtitr bo'lmasa yoki YouTube server so'rovini bloklasa, audio STT orqali matnga aylantiriladi (`ELEVENLABS_API_KEY`). Skanerlangan (rasm) PDF'lar uchun OCR hali yo'q.
 
+### Instagram va WhatsApp
+
+Meta ilovasining webhook manzili `<PUBLIC_BASE_URL>/meta/webhook` bo'ladi, tasdiqlash tokeni `META_VERIFY_TOKEN`.
+- **Instagram:** egasi dashboarddagi Ulash bo'limiga Instagram Login tokenini kiritadi. Ilova akkauntga avtomatik obuna bo'ladi.
+- **WhatsApp:** egasi `phone_number_id` va system user tokenini kiritadi.
+- **Kiruvchi xabarlar:** imzo bilan tekshiriladi, takroriy yetkazishlar o'tkazib yuboriladi. WhatsApp ovozli xabarlari STT orqali matnga aylantiriladi.
+- **24 soatlik qoida:** Meta erkin matnli javobga faqat foydalanuvchining oxirgi xabaridan keyingi 24 soat ichida ruxsat beradi. Egasining kech javobi `delivered: false` qaytaradi.
+- **Prod uchun Meta App Review kerak.**
+
 ### Keyingi qadamlar (v1–v2, `docs/02-mahsulot-prd.md`)
 
-- Instagram DM va WhatsApp Business kanallari (Meta app review talab qiladi).
 - Ovoz klonida javob berish (TTS): rozilik oqimi va biometrik ma'lumotni UZ serverida saqlash bilan.
 - Klon monetizatsiyasi: obunachilar klonga to'laydi, egasiga to'lov o'tkaziladi.
 - Skanerlangan PDF'lar uchun OCR; Telegram kanalini avtomatik sinxronlash.

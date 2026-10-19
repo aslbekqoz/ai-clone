@@ -1,5 +1,6 @@
 import { HashingEmbedder, LLMRouter, MockProvider, mockPolicy } from "@ai-clone/core";
-import { BillingService, CloneService, TelegramChannels, createPool, migrate, type Db } from "@ai-clone/db";
+import { BillingService, CloneService, MetaChannels, TelegramChannels, createPool, migrate, type Db } from "@ai-clone/db";
+import { createHmac } from "node:crypto";
 import { randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -46,6 +47,17 @@ describe.skipIf(!url)("HTTP API (Postgres)", () => {
           : true;
     return new Response(JSON.stringify({ ok: true, result }));
   }) as unknown as typeof fetch;
+  // Soxta Meta Graph API
+  const graphCalls: { url: string; method: string; body: Record<string, unknown> | null; auth: string }[] = [];
+  const graphFetch = (async (url: string | URL, init?: RequestInit) => {
+    const u = String(url);
+    const body = init?.body ? JSON.parse(String(init.body)) : null;
+    graphCalls.push({ url: u, method: init?.method ?? "GET", body, auth: String((init?.headers as Record<string, string>)?.authorization ?? "") });
+    if (String((init?.headers as Record<string, string>)?.authorization ?? "").includes("bad-token")) return new Response(JSON.stringify({ error: { message: "Invalid OAuth access token", code: 190 } }), { status: 400 });
+    if (u.includes("/me?fields=user_id,username")) return new Response(JSON.stringify({ id: "app-scoped", user_id: "17841400000000001", username: "dilnoza.ielts" }));
+    if (u.includes("?fields=display_phone_number")) return new Response(JSON.stringify({ display_phone_number: "+998 90 000 00 00", verified_name: "Dilnoza IELTS" }));
+    return new Response(JSON.stringify({ success: true, messages: [{ id: "wamid.out" }] }));
+  }) as unknown as typeof fetch;
   let apiKey: string;
   let otherKey: string;
   let cloneId: string;
@@ -64,7 +76,12 @@ describe.skipIf(!url)("HTTP API (Postgres)", () => {
     const telegram = new TelegramChannels(db, randomBytes(32), "https://api.aiclone.uz", tgFetch);
     app = createApp(
       new CloneService(db, new HashingEmbedder(), new LLMRouter([new MockProvider()], mockPolicy())),
-      { adminToken: "admin-secret", telegram, telegramClient: { fetch: tgFetch as never } },
+      {
+        adminToken: "admin-secret",
+        telegram,
+        telegramClient: { fetch: tgFetch as never },
+        meta: { channels: new MetaChannels(db, randomBytes(32), graphFetch), appSecret: "meta-app-secret", verifyToken: "verify-me" },
+      },
       new BillingService(db, { payme: { merchantId: "m1", key: "pk" } }),
     );
     for (const name of ["API A", "API B"]) {
@@ -239,6 +256,56 @@ describe.skipIf(!url)("HTTP API (Postgres)", () => {
     expect(await (await call(`/v1/clones/${cloneId}/telegram`, { method: "DELETE", key: apiKey })).json()).toEqual({ ok: true });
     expect(tgCalls.at(-1)?.method).toBe("deleteWebhook");
     expect((await app.request(path, { method: "POST", headers: { "content-type": "application/json", "x-telegram-bot-api-secret-token": String(hook.body.secret_token) }, body: JSON.stringify(update) })).status).toBe(401);
+  });
+
+  it("Instagram va WhatsApp: ulash → imzolangan webhook → javob, takror yetkazish va egasining javobi", async () => {
+    expect((await call(`/v1/clones/${cloneId}/channels/instagram`, { method: "POST", key: apiKey, body: JSON.stringify({ accessToken: "bad-token-xxxxxxxxxxxxxxxx" }) })).status).toBe(400);
+    const ig = await call(`/v1/clones/${cloneId}/channels/instagram`, { method: "POST", key: apiKey, body: JSON.stringify({ accessToken: "IGAA-instagram-token-123456" }) });
+    expect(await ig.json()).toEqual({ label: "@dilnoza.ielts" });
+    expect(graphCalls.some((c) => c.url.includes("me/subscribed_apps") && c.method === "POST")).toBe(true);
+    const wa = await call(`/v1/clones/${cloneId}/channels/whatsapp`, { method: "POST", key: apiKey, body: JSON.stringify({ phoneNumberId: "106540352242922", accessToken: "EAAJ-whatsapp-token-123456" }) });
+    expect(await wa.json()).toEqual({ label: "Dilnoza IELTS · +998 90 000 00 00" });
+    const list = (await (await call(`/v1/clones/${cloneId}/channels`, { key: apiKey })).json()) as { channels: { kind: string }[] };
+    expect(list.channels.map((c) => c.kind)).toEqual(["instagram", "whatsapp"]);
+    expect(JSON.stringify(list)).not.toContain("token");
+
+    // Webhook tasdiqlash (Meta ilovasini sozlashda)
+    expect(await (await app.request("/meta/webhook?hub.mode=subscribe&hub.verify_token=verify-me&hub.challenge=42")).text()).toBe("42");
+    expect((await app.request("/meta/webhook?hub.mode=subscribe&hub.verify_token=xato&hub.challenge=42")).status).toBe(403);
+
+    const post = (payload: unknown, secret = "meta-app-secret") => {
+      const raw = JSON.stringify(payload);
+      const sig = "sha256=" + createHmac("sha256", secret).update(raw).digest("hex");
+      return app.request("/meta/webhook", { method: "POST", headers: { "content-type": "application/json", "x-hub-signature-256": sig }, body: raw });
+    };
+    const igPayload = { object: "instagram", entry: [{ id: "17841400000000001", messaging: [{ sender: { id: "IGSID-77" }, recipient: { id: "17841400000000001" }, message: { mid: "ig-m-1", text: "Speaking bo'limida eng muhimi nima?" } }] }] };
+    expect((await post(igPayload, "boshqa")).status).toBe(401);
+    const r1 = await post(igPayload);
+    expect(await r1.json()).toMatchObject({ handled: 1, skipped: 0 });
+    const igReply = graphCalls.filter((c) => c.url.endsWith("/v26.0/me/messages")).at(-1)!;
+    expect(igReply.url.startsWith("https://graph.instagram.com/")).toBe(true);
+    expect(igReply.auth).toBe("Bearer IGAA-instagram-token-123456");
+    expect(igReply.body).toMatchObject({ recipient: { id: "IGSID-77" } });
+    expect(String((igReply.body as { message: { text: string } }).message.text)).toContain("ravonlik");
+    expect(await (await post(igPayload)).json()).toMatchObject({ handled: 0, skipped: 1 });
+
+    const waPayload = {
+      object: "whatsapp_business_account",
+      entry: [{ changes: [{ field: "messages", value: { metadata: { phone_number_id: "106540352242922" }, contacts: [{ wa_id: "998935551122", profile: { name: "Aziz" } }], messages: [{ from: "998935551122", id: "wamid.in-1", type: "text", text: { body: "Speaking uchun maslahat bering" } }] } }] }],
+    };
+    expect(await (await post(waPayload)).json()).toMatchObject({ handled: 1 });
+    const waReply = graphCalls.filter((c) => c.url.endsWith("/106540352242922/messages")).at(-1)!;
+    expect(waReply.body).toMatchObject({ messaging_product: "whatsapp", to: "+998935551122", type: "text" });
+
+    const convs = (await (await call(`/v1/clones/${cloneId}/conversations`, { key: apiKey })).json()) as { id: string; channel: string; name: string }[];
+    const waConv = convs.find((c) => c.channel === "whatsapp")!;
+    expect(waConv.name).toBe("Aziz");
+    const delivered = (await (await call(`/v1/conversations/${waConv.id}/reply`, { method: "POST", key: apiKey, body: JSON.stringify({ text: "Salom, Aziz!" }) })).json()) as { delivered: boolean };
+    expect(delivered.delivered).toBe(true);
+    expect(graphCalls.at(-1)?.body).toMatchObject({ to: "+998935551122", text: { body: "Salom, Aziz!" } });
+
+    expect(await (await call(`/v1/clones/${cloneId}/channels/instagram`, { method: "DELETE", key: apiKey })).json()).toEqual({ ok: true });
+    expect(await (await post({ ...igPayload, entry: [{ ...igPayload.entry[0], messaging: [{ ...igPayload.entry[0]!.messaging[0], message: { mid: "ig-m-2", text: "salom" } }] }] })).json()).toMatchObject({ handled: 0, skipped: 1 });
   });
 
   it("vidjet skripti va klon sahifasi", async () => {

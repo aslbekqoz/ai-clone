@@ -11,6 +11,7 @@ const app = createApp(rt.service, {
   ...(process.env.PUBLIC_BASE_URL ? { publicBaseUrl: process.env.PUBLIC_BASE_URL } : {}),
   stt: rt.stt,
   telegram: rt.telegram,
+  meta: rt.meta,
 }, rt.billing);
 
 const port = Number(process.env.PORT ?? 8787);

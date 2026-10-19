@@ -56,8 +56,8 @@ export interface ChatInput {
   externalId: string;
   name?: string;
   message: string;
-  /** Xabar ovozdan olingan bo'lsa — uzunligi (STT xarajatini kuzatish uchun). */
-  meta?: { voiceSeconds?: number };
+  /** Xabar ovozdan olingan bo'lsa (STT xarajatini kuzatish uchun): uzunligi ma'lum bo'lsa soniyada. */
+  meta?: { voice?: boolean; voiceSeconds?: number };
 }
 
 export interface ChatOutcome {

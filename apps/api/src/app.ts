@@ -1,6 +1,7 @@
-import { MAX_FILE_BYTES, UnsupportedFileError, fetchYouTubeTranscript, parseFile, type SpeechToText } from "@ai-clone/core";
+import { MAX_FILE_BYTES, UnsupportedFileError, fetchYouTubeTranscript, parseFile, parseMetaWebhook, verifyMetaSignature, type SpeechToText } from "@ai-clone/core";
 import { createWebhookDispatcher } from "@ai-clone/bot";
-import { PaymentNotConfiguredError, TelegramConnectError, type BillingService, type CloneService, type TelegramChannels } from "@ai-clone/db";
+import { MetaConnectError, PaymentNotConfiguredError, TelegramConnectError, type BillingService, type CloneService, type MetaChannels, type TelegramChannels } from "@ai-clone/db";
+import { processMetaInbound } from "./meta-webhook.js";
 import type { ApiClientOptions } from "grammy";
 import type { Update } from "grammy/types";
 import { Hono, type Context } from "hono";
@@ -22,6 +23,8 @@ export interface AppConfig {
   telegram?: TelegramChannels | null;
   /** Testlar uchun: webhook botlarining Telegram API so'rovlari. */
   telegramClient?: ApiClientOptions;
+  /** Instagram DM va WhatsApp (Meta ilovasi). */
+  meta?: { channels: MetaChannels; appSecret: string; verifyToken: string } | null;
 }
 
 type Env = { Variables: { tenantId: string } };
@@ -71,6 +74,8 @@ const schemas = {
   mode: z.object({ mode: z.enum(["bot", "human", "paused"]) }),
   reply: z.object({ text: z.string().min(1).max(4000) }),
   order: z.object({ plan: z.enum(["creator", "pro", "business"]), months: z.union([z.literal(1), z.literal(3), z.literal(6), z.literal(12)]).default(1), provider: z.enum(["payme", "click"]) }),
+  instagram: z.object({ accessToken: z.string().min(20).max(1000) }),
+  whatsapp: z.object({ phoneNumberId: z.string().regex(/^\d{5,20}$/), accessToken: z.string().min(20).max(1000) }),
   telegramToken: z.object({ token: z.string().min(10).max(100) }),
   feedback: z.object({ rating: z.union([z.literal(1), z.literal(-1)]), correction: z.string().max(4000).optional() }),
 };
@@ -91,7 +96,7 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
   app.onError((err, c) => {
     if (err instanceof HTTPException) return c.json({ error: err.message }, err.status);
     if (err instanceof PaymentNotConfiguredError) return c.json({ error: err.message }, 503);
-    if (err instanceof TelegramConnectError) return c.json({ error: err.message }, err.status);
+    if (err instanceof TelegramConnectError || err instanceof MetaConnectError) return c.json({ error: err.message }, err.status);
     if (err.message.includes("topilmadi")) return c.json({ error: err.message }, 404);
     if ((err as { code?: string }).code === "23505") return c.json({ error: "Bunday yozuv allaqachon mavjud" }, 409);
     console.error(err);
@@ -230,6 +235,10 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
       const token = own?.token ?? cfg.telegramBotToken;
       if (token) delivered = cfg.telegram ? await cfg.telegram.sendMessage(token, dest.externalId, text) : await sendTelegram(token, dest.externalId, text);
     }
+    if ((dest.channel === "instagram" || dest.channel === "whatsapp") && cfg.meta) {
+      const ch = await cfg.meta.channels.resolveByClone(t(c), dest.cloneId, dest.channel);
+      if (ch) delivered = await cfg.meta.channels.send(ch, dest.externalId, text);
+    }
     // Web vidjet egasining javobini /public/:slug/updates orqali oladi.
     return c.json({ ok: true, channel: dest.channel, delivered });
   });
@@ -258,6 +267,30 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
     return c.json({ ok: await telegramOr503().disconnect(t(c), c.req.param("id")) });
   });
 
+  // --- Instagram DM va WhatsApp ---
+  const metaOr503 = () => {
+    if (!cfg.meta) throw new HTTPException(503, { message: "Meta kanallari sozlanmagan (CHANNEL_SECRET_KEY va META_APP_SECRET kerak)" });
+    return cfg.meta.channels;
+  };
+  v1.get("/clones/:id/channels", async (c) => {
+    await cloneOr404(c);
+    return c.json({ available: Boolean(cfg.meta), channels: cfg.meta ? await cfg.meta.channels.list(t(c), c.req.param("id")) : [] });
+  });
+  v1.post("/clones/:id/channels/instagram", async (c) => {
+    await cloneOr404(c);
+    const { accessToken } = await body(c, schemas.instagram);
+    return c.json(await metaOr503().connectInstagram(t(c), c.req.param("id"), accessToken), 201);
+  });
+  v1.post("/clones/:id/channels/whatsapp", async (c) => {
+    await cloneOr404(c);
+    const { phoneNumberId, accessToken } = await body(c, schemas.whatsapp);
+    return c.json(await metaOr503().connectWhatsApp(t(c), c.req.param("id"), phoneNumberId, accessToken), 201);
+  });
+  v1.delete("/clones/:id/channels/:kind{instagram|whatsapp}", async (c) => {
+    await cloneOr404(c);
+    return c.json({ ok: await metaOr503().disconnect(t(c), c.req.param("id"), c.req.param("kind") as "instagram" | "whatsapp") });
+  });
+
   const billingOr503 = () => {
     if (!billing) throw new HTTPException(503, { message: "To'lovlar yoqilmagan" });
     return billing;
@@ -280,6 +313,26 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
     if (!update || typeof update.update_id !== "number") return c.json({ error: "Update noto'g'ri" }, 400);
     const ok = await dispatch(c.req.param("id"), c.req.header("x-telegram-bot-api-secret-token"), update);
     return ok ? c.json({ ok: true }) : c.json({ error: "Ruxsat yo'q" }, 401);
+  });
+
+  // --- Meta webhook: Instagram va WhatsApp uchun bitta manzil (Meta ilovasi sozlamalarida) ---
+  app.get("/meta/webhook", (c) => {
+    if (!cfg.meta || !cfg.meta.verifyToken) return c.text("Meta sozlanmagan", 404);
+    if (c.req.query("hub.mode") === "subscribe" && c.req.query("hub.verify_token") === cfg.meta.verifyToken) return c.text(c.req.query("hub.challenge") ?? "");
+    return c.text("Forbidden", 403);
+  });
+  app.post("/meta/webhook", async (c) => {
+    if (!cfg.meta) return c.text("Meta sozlanmagan", 404);
+    const raw = await c.req.text();
+    if (!verifyMetaSignature(raw, c.req.header("x-hub-signature-256"), cfg.meta.appSecret)) return c.text("Imzo noto'g'ri", 401);
+    let json: unknown;
+    try {
+      json = JSON.parse(raw);
+    } catch {
+      return c.text("JSON xato", 400);
+    }
+    const result = await processMetaInbound(svc, cfg.meta.channels, parseMetaWebhook(json), cfg.stt ?? null);
+    return c.json({ ok: true, ...result });
   });
 
   // --- To'lov tizimlari webhooklari (har doim HTTP 200 — protokol talabi) ---

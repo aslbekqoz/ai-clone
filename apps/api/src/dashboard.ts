@@ -200,12 +200,12 @@ async function viewStats(view){const s=await api("/v1/clones/"+clone.id+"/stats"
     h("p",{class:"muted small",style:"margin-top:14px"},"Javob topilmagan savollar — bilim bazasidagi bo'shliqlar. Ularni Inbox'da \\"e'tibor\\" filtri bilan ko'ring va Bilim bo'limiga qo'shing."));}
 
 // --- Ulash ---
-async function viewConnect(view){const tgCard=h("div",{class:"card"}),base=location.origin,page=base+"/c/"+clone.slug,snippet='<script src="'+base+'/widget.js" data-clone="'+clone.slug+'" async><\\/script>';
+async function viewConnect(view){const tgCard=h("div",{class:"card"}),igCard=h("div",{class:"card"}),waCard=h("div",{class:"card"}),base=location.origin,page=base+"/c/"+clone.slug,snippet='<script src="'+base+'/widget.js" data-clone="'+clone.slug+'" async><\\/script>';
   const copy=(text)=>guard(async()=>{await navigator.clipboard.writeText(text);toast("Nusxalandi");});
   view.append(h("div",{class:"grid"},
     h("div",{class:"card"},h("h3",{},"Ommaviy sahifa"),h("p",{class:"small muted"},"Telegram/Instagram bio'ga qo'ying."),h("pre",{class:"code"},page),h("div",{class:"row"},h("button",{class:"small",onclick:copy(page)},"Nusxalash"),h("a",{href:page,target:"_blank",rel:"noopener"},"Ochish →"))),
     h("div",{class:"card"},h("h3",{},"Sayt vidjeti"),h("p",{class:"small muted"},"Saytingiz </body> tegidan oldin qo'ying."),h("pre",{class:"code"},snippet),h("button",{class:"small",onclick:copy(snippet)},"Nusxalash")),
-    tgCard));
+    tgCard,igCard,waCard));
   async function loadTg(){const st=await api("/v1/clones/"+clone.id+"/telegram");tgCard.replaceChildren(h("h3",{},"Telegram bot"));
     if(!st.available){tgCard.append(h("p",{class:"small muted"},"Serverda ko'p klonli Telegram yoqilmagan (CHANNEL_SECRET_KEY, PUBLIC_BASE_URL). Muqobil: TELEGRAM_BOT_TOKEN va CLONE_SLUG="+clone.slug+" bilan alohida bot jarayoni."));return;}
     if(st.connected){tgCard.append(h("p",{},"Ulangan: ",h("a",{href:"https://t.me/"+st.botUsername,target:"_blank",rel:"noopener"},"@"+st.botUsername)),
@@ -214,7 +214,17 @@ async function viewConnect(view){const tgCard=h("div",{class:"card"}),base=locat
     const tok=h("input",{type:"password",placeholder:"123456789:AA…",autocomplete:"off"});
     tgCard.append(h("p",{class:"small muted"},"@BotFather → /newbot → tokenni shu yerga qo'ying. Token shifrlangan holda saqlanadi."),
       h("form",{onsubmit:guard(async()=>{const r=await post("/v1/clones/"+clone.id+"/telegram",{token:tok.value.trim()});toast("@"+r.botUsername+" ulandi");loadTg();})},tok,h("div",{style:"margin-top:10px"},h("button",{type:"submit"},"Ulash"))));}
-  await loadTg();}
+  async function loadMeta(){const st=await api("/v1/clones/"+clone.id+"/channels");
+    const render=(card,kind,title,hint,fields)=>{card.replaceChildren(h("h3",{},title));
+      if(!st.available){card.append(h("p",{class:"small muted"},"Serverda Meta kanallari yoqilmagan (CHANNEL_SECRET_KEY, META_APP_SECRET)."));return;}
+      const ch=st.channels.find(x=>x.kind===kind);
+      if(ch){card.append(h("p",{},"Ulangan: "+ch.label),h("button",{class:"ghost small",onclick:guard(async()=>{if(!confirm(title+" uzilsinmi?"))return;await api("/v1/clones/"+clone.id+"/channels/"+kind,{method:"DELETE"});toast("Uzildi");loadMeta();})},"Uzish"));return;}
+      const inputs=fields.map(([key,ph])=>[key,h("input",{type:key==="accessToken"?"password":"text",placeholder:ph,autocomplete:"off",required:true})]);
+      card.append(h("p",{class:"small muted"},hint),h("form",{onsubmit:guard(async()=>{const b=Object.fromEntries(inputs.map(([k,el])=>[k,el.value.trim()]));const r=await post("/v1/clones/"+clone.id+"/channels/"+kind,b);toast(r.label+" ulandi");loadMeta();})},
+        inputs.map(([,el])=>h("div",{style:"margin-bottom:8px"},el)),h("button",{type:"submit"},"Ulash")));};
+    render(igCard,"instagram","Instagram DM","Instagram professional akkaunt, Instagram Login tokeni (instagram_business_manage_messages ruxsati bilan).",[["accessToken","Instagram access token"]]);
+    render(waCard,"whatsapp","WhatsApp","WhatsApp Cloud API: Meta Business'dagi phone_number_id va doimiy (system user) token.",[["phoneNumberId","phone_number_id"],["accessToken","Access token"]]);}
+  await Promise.all([loadTg(),loadMeta()]);}
 
 // --- Tarif ---
 const PLAN_NAMES={free:"Free",creator:"Creator",pro:"Pro",business:"Business",enterprise:"Enterprise"};
