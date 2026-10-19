@@ -33,6 +33,12 @@
 - [ ] Ma'lumot buzilishi jarayoni: 24 soatda xabarnoma, 72 soatda hisobot
 - [ ] LLM provayderlari bilan DPA va zero-retention sozlamalari
 
+### Klon monetizatsiyasi
+- [ ] Kreatorlar bilan agentlik shartnomasi: platforma ular nomidan obunachilardan to'lov qabul qiladi, 12% komissiya oladi
+- [ ] Payme/Click bilan marketplace (sub-merchant) yoki agent sxemasi bo'yicha kelishuv
+- [ ] Soliq: komissiya daromadi bo'yicha QQS; kreator daromadi va undan ushlab qolinadigan soliqlar
+- [ ] Obunachilar uchun ommaviy oferta (pulni qaytarish shartlari bilan)
+
 ### AI va kontent
 - [ ] Har bir kanalda "AI-klon" oshkoraligi — EU AI Act 50-modda (2026-yil 2-avgustdan; yevropalik foydalanuvchilar uchun ham amal qiladi, jarima €15 mln yoki aylanmaning 3% igacha) — [Faegre Drinker](https://www.faegredrinker.com/en/insights/publications/2026/7/eu-ai-act-commission-confirms-transparency-code-of-practice-as-adequate-and-publishes-final-version-of-its-guidelines-on-transparency-obligations)
 - [ ] AI generatsiya qilingan audio/videoga mashina o'qiy oladigan belgi (watermark)

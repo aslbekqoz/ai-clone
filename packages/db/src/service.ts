@@ -19,6 +19,7 @@ import {
   type StyleProfile,
 } from "@ai-clone/core";
 import { FREE_PLAN } from "./billing.js";
+import { paywallReply, type MonetizationService, type Offer } from "./monetization.js";
 import { PgKnowledgeStore } from "./knowledge-store.js";
 import { toVector, withTenant, type Db, type Tx } from "./pool.js";
 
@@ -71,6 +72,8 @@ export interface ChatOutcome {
   escalationReasons: string[];
   leadCaptured: boolean;
   limitReached: boolean;
+  /** Bepul savollar tugagan — obunachiga to'lov takliflari (vidjet ularni tugma sifatida ko'rsatadi). */
+  paywall?: { offers: Offer[] };
 }
 
 const PLAN_LIMITS: Record<string, number> = { free: 100, creator: 2000, pro: 6000, business: 25000, enterprise: 1_000_000 };
@@ -87,6 +90,8 @@ export interface CloneServiceOptions {
   reranker?: Reranker;
   /** Kichik modeldagi klassifikator va so'rovni qayta yozish (04-hujjat §3.3, §3.1). */
   smart?: { classifier?: boolean; rewrite?: boolean };
+  /** Klon monetizatsiyasi: bepul savollardan keyin pullik kirish. */
+  paywall?: MonetizationService;
 }
 
 const MAX_MEMORY_FACTS = 20;
@@ -296,6 +301,23 @@ export class CloneService {
       return { ...base, reply: null, messageId: null };
     }
 
+    // 1b. Monetizatsiya: bepul savollar tugagan va huquq yo'q — LLM chaqirilmaydi, to'lov taklif qilinadi.
+    let entitlementId: string | undefined;
+    if (this.opts.paywall) {
+      const access = await this.opts.paywall.checkAccess(tenantId, cloneId, ctx.endUserId);
+      if (!access.allowed) {
+        const offers = await this.opts.paywall.offers(tenantId, cloneId, ctx.endUserId);
+        const lang = detectLang(input.message);
+        const reply = paywallReply(lang, access.freeMessages, offers);
+        const messageId = await withTenant(this.db, tenantId, async (tx) => {
+          await insertMessage(tx, tenantId, ctx.conv.id, { role: "user", content: input.message, lang, ...(input.meta ? { flags: input.meta } : {}) });
+          return insertMessage(tx, tenantId, ctx.conv.id, { role: "assistant", content: reply, lang, answerSource: "paywall" });
+        });
+        return { ...base, reply, messageId, paywall: { offers } };
+      }
+      entitlementId = access.entitlementId;
+    }
+
     // 2. AI javobi — ochiq tranzaksiyasiz (qidiruv so'rovlari o'z tranzaksiyalarida).
     const result = await handleTurn(
       {
@@ -362,6 +384,7 @@ export class CloneService {
         leadCaptured = Boolean(lead.rows[0]?.inserted) || phone !== null;
       }
 
+      if (entitlementId) await this.opts.paywall!.consume(entitlementId);
       return { ...base, reply: result.reply, messageId, citations: result.citations, escalated: result.escalate, escalationReasons: result.escalationReasons, leadCaptured };
     });
   }

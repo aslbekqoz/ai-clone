@@ -3,6 +3,7 @@ import { BillingService, billingConfigFromEnv } from "./billing.js";
 import { parseSecretKey } from "./crypto.js";
 import { createPool, type Db } from "./pool.js";
 import { MetaChannels } from "./meta-channels.js";
+import { MonetizationService } from "./monetization.js";
 import { TelegramChannels } from "./telegram-channels.js";
 import { CloneService } from "./service.js";
 import { VoiceService } from "./voice.js";
@@ -21,6 +22,8 @@ export interface Runtime {
   meta: { channels: MetaChannels; appSecret: string; verifyToken: string } | null;
   /** Ovoz kloni (rozilik bilan). UZ tenantlari uchun xorijiy provayder VOICE_ALLOW_CROSS_BORDER=1 talab qiladi. */
   voice: VoiceService;
+  /** PAYMENT_LINK_SECRET va PUBLIC_BASE_URL bo'lsa — obunachilar klonga pullik kirish oladi. */
+  monetization: MonetizationService | null;
 }
 
 /**
@@ -40,7 +43,10 @@ export function createRuntime(env: NodeJS.ProcessEnv = process.env): Runtime {
   const stt = env.ELEVENLABS_API_KEY ? new ElevenLabsStt(env.ELEVENLABS_API_KEY, env.ELEVENLABS_STT_MODEL ?? "scribe_v2") : null;
   if (llm === "mock") console.warn("⚠️  ANTHROPIC_API_KEY yo'q — MockProvider ishlatilmoqda (javoblar manbadan iqtibos, haqiqiy model emas).");
   const smartOn = llm === "anthropic" && env.SMART_GUARDRAILS !== "0";
+  const billing = new BillingService(db, billingConfigFromEnv(env));
+  const monetization = env.PAYMENT_LINK_SECRET && env.PUBLIC_BASE_URL ? new MonetizationService(db, billing, env.PAYMENT_LINK_SECRET, env.PUBLIC_BASE_URL) : null;
   const service = new CloneService(db, embedder, router, {
+    ...(monetization ? { paywall: monetization } : {}),
     ...(env.TEI_RERANK_URL ? { reranker: new TeiReranker(env.TEI_RERANK_URL) } : {}),
     ...(smartOn ? { smart: { classifier: true, rewrite: true } } : {}),
   });
@@ -51,5 +57,5 @@ export function createRuntime(env: NodeJS.ProcessEnv = process.env): Runtime {
       : null;
   const cloner = env.ELEVENLABS_API_KEY ? new ElevenLabsVoice(env.ELEVENLABS_API_KEY, env.ELEVENLABS_TTS_MODEL ?? "eleven_v3") : null;
   const voice = new VoiceService(db, cloner, stt, { allowCrossBorder: env.VOICE_ALLOW_CROSS_BORDER === "1" });
-  return { db, service, telegram, meta, voice, billing: new BillingService(db, billingConfigFromEnv(env)), llm, embedder, stt };
+  return { db, service, telegram, meta, voice, monetization, billing, llm, embedder, stt };
 }

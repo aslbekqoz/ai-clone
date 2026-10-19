@@ -105,11 +105,17 @@ class RpcFail extends Error {
 interface OrderRow {
   id: string;
   tenant_id: string;
-  plan: PaidPlan;
-  months: number;
+  kind: "plan" | "fan";
+  plan: PaidPlan | null;
+  months: number | null;
+  product_id: string | null;
+  end_user_id: string | null;
   amount_tiyin: string;
   status: "pending" | "paid" | "cancelled" | "refunded";
 }
+
+/** Platforma komissiyasi obunachi to'lovlaridan (05-hujjat). */
+export const FAN_COMMISSION_RATE = 0.12;
 
 interface PaymeTxRow {
   id: string;
@@ -148,6 +154,22 @@ export class BillingService {
     return { orderId, amountUzs, checkoutUrl };
   }
 
+  /** Obunachi buyurtmasi (klon mahsuloti). Narx mahsulotdan olinadi, checkout havolasi qaytadi. */
+  async createFanOrder(input: { tenantId: string; productId: string; endUserId: string; provider: PaymentProvider; returnUrl?: string }): Promise<{ orderId: string; amountUzs: number; checkoutUrl: string }> {
+    const providerCfg = input.provider === "payme" ? this.cfg.payme : this.cfg.click;
+    if (!providerCfg) throw new PaymentNotConfiguredError(input.provider);
+    const p = (await this.db.query<{ price_uzs: number; active: boolean }>("SELECT price_uzs, active FROM products WHERE id = $1 AND tenant_id = $2", [input.productId, input.tenantId])).rows[0];
+    if (!p?.active) throw new Error("Mahsulot topilmadi");
+    const { rows } = await this.db.query<{ id: string }>(
+      "INSERT INTO orders (tenant_id, kind, product_id, end_user_id, amount_tiyin, provider) VALUES ($1, 'fan', $2, $3, $4, $5) RETURNING id",
+      [input.tenantId, input.productId, input.endUserId, p.price_uzs * 100, input.provider],
+    );
+    const orderId = rows[0]!.id;
+    const ret = input.returnUrl ?? this.cfg.returnUrl;
+    const checkoutUrl = input.provider === "payme" ? paymeCheckoutUrl(this.cfg.payme!, orderId, p.price_uzs * 100, ret) : clickCheckoutUrl(this.cfg.click!, orderId, p.price_uzs, ret);
+    return { orderId, amountUzs: p.price_uzs, checkoutUrl };
+  }
+
   async summary(tenantId: string) {
     const t = await this.db.query<{ plan: string; plan_expires_at: Date | null; monthly_message_limit: number; used: number }>(
       `SELECT t.plan, t.plan_expires_at, t.monthly_message_limit,
@@ -156,7 +178,7 @@ export class BillingService {
       [tenantId],
     );
     const orders = await this.db.query(
-      "SELECT id, plan, months, amount_tiyin / 100 AS amount_uzs, provider, status, created_at, paid_at FROM orders WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 20",
+      "SELECT id, plan, months, amount_tiyin / 100 AS amount_uzs, provider, status, created_at, paid_at FROM orders WHERE tenant_id = $1 AND kind = 'plan' ORDER BY created_at DESC LIMIT 20",
       [tenantId],
     );
     const row = t.rows[0];
@@ -234,7 +256,7 @@ export class BillingService {
     if (!c?.ikpuCode || !c.packageCode) return null;
     return {
       receipt_type: 0,
-      items: [{ title: `AI Clone — ${order.plan} tarifi, ${order.months} oy`, price: Number(order.amount_tiyin), count: 1, code: c.ikpuCode, package_code: c.packageCode, vat_percent: c.vatPercent ?? 12 }],
+      items: [{ title: order.kind === "fan" ? "AI Clone — klonga kirish" : `AI Clone — ${order.plan} tarifi, ${order.months} oy`, price: Number(order.amount_tiyin), count: 1, code: c.ikpuCode, package_code: c.packageCode, vat_percent: c.vatPercent ?? 12 }],
     };
   }
 
@@ -408,11 +430,24 @@ export class BillingService {
 }
 
 /** To'langan buyurtma: tarif, limitlar va muddat yangilanadi (amaldagi muddat ustiga qo'shiladi). */
+/** To'langan buyurtma: tarif (kind = plan) yoki obunachi huquqi + kreator daromadi (kind = fan). */
 async function activateOrder(client: pg.PoolClient, orderId: string): Promise<void> {
   const { rows } = await client.query<OrderRow>("UPDATE orders SET status = 'paid', paid_at = now() WHERE id = $1 AND status = 'pending' RETURNING *", [orderId]);
   const order = rows[0];
   if (!order) return;
-  const plan = PLANS[order.plan];
+  if (order.kind === "fan") {
+    const p = (await client.query<{ clone_id: string; messages: number | null; days: number | null }>("SELECT clone_id, messages, days FROM products WHERE id = $1", [order.product_id])).rows[0]!;
+    await client.query(
+      `INSERT INTO entitlements (tenant_id, clone_id, end_user_id, order_id, remaining_messages, expires_at)
+       VALUES ($1, $2, $3, $4, $5, CASE WHEN $6::int IS NULL THEN NULL ELSE now() + make_interval(days => $6::int) END)`,
+      [order.tenant_id, p.clone_id, order.end_user_id, order.id, p.messages, p.days],
+    );
+    const gross = Number(order.amount_tiyin);
+    const commission = Math.round(gross * FAN_COMMISSION_RATE);
+    await client.query("INSERT INTO creator_earnings (tenant_id, order_id, gross_tiyin, commission_tiyin, net_tiyin) VALUES ($1, $2, $3, $4, $5)", [order.tenant_id, order.id, gross, commission, gross - commission]);
+    return;
+  }
+  const plan = PLANS[order.plan!];
   await client.query(
     `UPDATE tenants SET plan = $2, monthly_message_limit = $3, daily_spend_cap_usd = $4,
             plan_expires_at = greatest(coalesce(plan_expires_at, now()), now()) + make_interval(months => $5)
@@ -423,7 +458,18 @@ async function activateOrder(client: pg.PoolClient, orderId: string): Promise<vo
 
 async function refundOrder(client: pg.PoolClient, orderId: string): Promise<void> {
   const { rows } = await client.query<OrderRow>("UPDATE orders SET status = 'refunded' WHERE id = $1 AND status = 'paid' RETURNING *", [orderId]);
-  if (rows[0]) await client.query("UPDATE tenants SET plan_expires_at = now() WHERE id = $1", [rows[0].tenant_id]);
+  const order = rows[0];
+  if (!order) return;
+  if (order.kind === "fan") {
+    // Qaytarishda huquq bekor qilinadi va kreator daromadidan teskari yozuv qo'shiladi.
+    await client.query("UPDATE entitlements SET revoked_at = now() WHERE order_id = $1", [order.id]);
+    await client.query(
+      "INSERT INTO creator_earnings (tenant_id, order_id, gross_tiyin, commission_tiyin, net_tiyin) SELECT tenant_id, order_id, -gross_tiyin, -commission_tiyin, -net_tiyin FROM creator_earnings WHERE order_id = $1 AND gross_tiyin > 0",
+      [order.id],
+    );
+    return;
+  }
+  await client.query("UPDATE tenants SET plan_expires_at = now() WHERE id = $1", [order.tenant_id]);
 }
 
 function safeEqualHex(a: string, b: string): boolean {

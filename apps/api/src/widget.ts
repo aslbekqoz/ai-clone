@@ -15,6 +15,8 @@ const STYLES = `
 .acw-user{align-self:flex-end;background:var(--ink);color:var(--bone)}
 .acw-src{display:block;margin-top:6px;font-size:12px;color:var(--muted)}
 .acw-src a{color:var(--accent)}
+.acw-offers{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.acw-offers a{display:block;text-align:center;padding:8px 10px;border-radius:9px;background:var(--ink);color:var(--bone);text-decoration:none;font-size:14px}
 .acw-form{display:flex;gap:8px;padding:10px;border-top:1px solid var(--line)}
 .acw-form input{flex:1;min-width:0;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font:inherit;background:#fff;color:var(--ink)}
 .acw-form button{border:0;border-radius:10px;padding:0 16px;background:var(--ink);color:var(--bone);font:inherit;cursor:pointer}
@@ -44,16 +46,18 @@ const target=mount&&document.querySelector(mount);
 if(target){panel.style.height="100%";target.appendChild(root);}else{
   panel.classList.add("acw-float","acw-hidden");const fab=document.createElement("button");fab.className="acw-fab";fab.setAttribute("aria-label","Chatni ochish");fab.textContent="💬";
   fab.onclick=()=>{panel.classList.toggle("acw-hidden");if(!panel.classList.contains("acw-hidden"))input.focus();};root.appendChild(fab);document.body.appendChild(root);}
-function add(text,cls,citations){const m=document.createElement("div");m.className="acw-msg "+cls;m.textContent=text.replace(/\\s*\\[S\\d+(?:,\\s*S\\d+)*\\]/g,"");
+function add(text,cls,citations,offers){if(offers&&offers.length)text=text.split("\\n").filter(l=>!/^• .*https?:\\/\\//.test(l)).join("\\n");const m=document.createElement("div");m.className="acw-msg "+cls;m.textContent=text.replace(/\\s*\\[S\\d+(?:,\\s*S\\d+)*\\]/g,"");
   if(citations&&citations.length){const s=document.createElement("span");s.className="acw-src";s.append("Manba: ");
     citations.forEach((c,i)=>{if(i)s.append(", ");if(c.url&&/^https?:/.test(c.url)){const a=document.createElement("a");a.href=c.url;a.target="_blank";a.rel="noopener";a.textContent=c.title;s.append(a);}else s.append(c.title);});m.appendChild(s);}
+  if(offers&&offers.length){const o=document.createElement("div");o.className="acw-offers";
+    offers.forEach(x=>{if(!/^https?:/.test(x.url))return;const a=document.createElement("a");a.href=x.url;a.target="_blank";a.rel="noopener";a.textContent=x.title+" — "+Number(x.priceUzs).toLocaleString("ru-RU")+" so'm";o.appendChild(a);});m.appendChild(o);}
   log.appendChild(m);log.scrollTop=log.scrollHeight;}
 let since=new Date().toISOString(),poll=null;
 function startPolling(){if(poll)return;poll=setInterval(async()=>{try{const r=await fetch(BASE+"/public/"+encodeURIComponent(slug)+"/updates?visitorId="+vid+"&after="+encodeURIComponent(since));
   if(!r.ok)return;for(const m of await r.json()){add(m.text,"acw-owner");since=m.at;}}catch{}},5000);}
 form.addEventListener("submit",async(e)=>{e.preventDefault();const text=input.value.trim();if(!text)return;input.value="";add(text,"acw-user");btn.disabled=true;
   try{const r=await fetch(BASE+"/public/"+encodeURIComponent(slug)+"/chat",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({visitorId:vid,message:text})});
-    const d=await r.json();if(!r.ok)add(d.error||"Xatolik yuz berdi","acw-bot");else if(d.reply)add(d.reply,"acw-bot",d.citations);else{add("Xabaringiz egasiga yetkazildi — u shu yerda javob beradi.","acw-bot");}
+    const d=await r.json();if(!r.ok)add(d.error||"Xatolik yuz berdi","acw-bot");else if(d.reply)add(d.reply,"acw-bot",d.citations,d.offers);else{add("Xabaringiz egasiga yetkazildi — u shu yerda javob beradi.","acw-bot");}
     if(d.humanMode)startPolling();}
   catch{add("Tarmoq xatosi, qayta urinib ko'ring.","acw-bot");}finally{btn.disabled=false;input.focus();}});
 })();`;
@@ -85,4 +89,17 @@ footer{font-size:13px;color:var(--muted)}footer a{color:inherit}
 </main>
 <script src="${esc(base)}/widget.js" data-clone="${esc(slug)}" data-mount="#chat" data-title="${esc(name)} bilan suhbat"></script>
 </body></html>`;
+}
+
+/** Obunachi to'lov sahifasi (bir nechta to'lov tizimi sozlanganda tanlash uchun). */
+export function payPageHtml(info: { title: string; priceUzs: number; cloneName: string; providers: string[] } | null, token: string): string {
+  const body = info
+    ? `<h1>${esc(info.cloneName)}</h1><p>${esc(info.title)}</p><p class="price">${info.priceUzs.toLocaleString("ru-RU").replace(/,/g, " ")} so'm</p>
+       ${info.providers.map((p) => `<a class="btn" href="/pay/${esc(token)}/${esc(p)}">${p === "payme" ? "Payme" : "Click"} orqali to'lash</a>`).join("")}
+       <p class="note">To'lovdan keyin chatga qayting — klon savollaringizga javob berishda davom etadi.</p>`
+    : `<h1>Havola eskirgan</h1><p>To'lov havolasi noto'g'ri yoki muddati o'tgan. Chatdan yangi havola so'rang.</p>`;
+  return `<!doctype html><html lang="uz"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>To'lov — AI Clone</title>
+<style>body{margin:0;background:#f6f1e7;color:#16130f;font:16px/1.5 system-ui,sans-serif}main{max-width:420px;margin:12vh auto;padding:0 16px;display:flex;flex-direction:column;gap:12px}
+h1{font:700 30px Georgia,serif;margin:0}.price{font:700 26px Georgia,serif;margin:0}.btn{display:block;text-align:center;padding:12px;border-radius:10px;background:#16130f;color:#f6f1e7;text-decoration:none}.note{color:#6f675b;font-size:14px}</style>
+</head><body><main>${body}</main></body></html>`;
 }

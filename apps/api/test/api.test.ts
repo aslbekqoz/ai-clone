@@ -1,5 +1,5 @@
 import { HashingEmbedder, LLMRouter, MockProvider, mockPolicy } from "@ai-clone/core";
-import { BillingService, CloneService, MetaChannels, TelegramChannels, createPool, migrate, type Db } from "@ai-clone/db";
+import { BillingService, CloneService, MetaChannels, MonetizationService, TelegramChannels, createPool, migrate, type Db } from "@ai-clone/db";
 import { createHmac } from "node:crypto";
 import { randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -74,15 +74,18 @@ describe.skipIf(!url)("HTTP API (Postgres)", () => {
     db = createPool(url);
     await migrate(db);
     const telegram = new TelegramChannels(db, randomBytes(32), "https://api.aiclone.uz", tgFetch);
+    const billing = new BillingService(db, { payme: { merchantId: "m1", key: "pk" } });
+    const monetization = new MonetizationService(db, billing, "link-secret", "https://api.aiclone.uz");
     app = createApp(
-      new CloneService(db, new HashingEmbedder(), new LLMRouter([new MockProvider()], mockPolicy())),
+      new CloneService(db, new HashingEmbedder(), new LLMRouter([new MockProvider()], mockPolicy()), { paywall: monetization }),
       {
         adminToken: "admin-secret",
         telegram,
         telegramClient: { fetch: tgFetch as never },
         meta: { channels: new MetaChannels(db, randomBytes(32), graphFetch), appSecret: "meta-app-secret", verifyToken: "verify-me" },
+        monetization,
       },
-      new BillingService(db, { payme: { merchantId: "m1", key: "pk" } }),
+      billing,
     );
     for (const name of ["API A", "API B"]) {
       const r = await call("/admin/tenants", { method: "POST", headers: { "x-admin-token": "admin-secret" }, body: JSON.stringify({ name, plan: "pro" }) });
@@ -306,6 +309,29 @@ describe.skipIf(!url)("HTTP API (Postgres)", () => {
 
     expect(await (await call(`/v1/clones/${cloneId}/channels/instagram`, { method: "DELETE", key: apiKey })).json()).toEqual({ ok: true });
     expect(await (await post({ ...igPayload, entry: [{ ...igPayload.entry[0], messaging: [{ ...igPayload.entry[0]!.messaging[0], message: { mid: `ig-m-2-${slug}`, text: "salom" } }] }] })).json()).toMatchObject({ handled: 0, skipped: 1 });
+  });
+
+  it("monetizatsiya: mahsulot, pullik kirish, vidjetda takliflar va to'lov sahifasi", async () => {
+    const prod = await call(`/v1/clones/${cloneId}/products`, { method: "POST", key: apiKey, body: JSON.stringify({ title: "10 ta savol", kind: "pack", messages: 10, priceUzs: 25000 }) });
+    expect(prod.status).toBe(201);
+    expect((await call(`/v1/clones/${cloneId}/products`, { method: "POST", key: apiKey, body: JSON.stringify({ title: "x", kind: "pack", priceUzs: 25000 }) })).status).toBe(422);
+    expect((await call(`/v1/clones/${cloneId}/monetization`, { method: "PATCH", key: apiKey, body: JSON.stringify({ enabled: true, freeMessages: 0 }) })).status).toBe(200);
+    const settings = (await (await call(`/v1/clones/${cloneId}/monetization`, { key: apiKey })).json()) as { enabled: boolean; products: unknown[]; commissionRate: number };
+    expect(settings).toMatchObject({ enabled: true, commissionRate: 0.12 });
+
+    const r = (await (await call(`/public/${slug}/chat`, { method: "POST", body: JSON.stringify({ visitorId: "paying-visitor-1", message: "Salom" }) })).json()) as { offers: { url: string; priceUzs: number }[] };
+    expect(r.offers[0]).toMatchObject({ priceUzs: 25000 });
+    const path = new URL(r.offers[0]!.url).pathname;
+    const page = await app.request(path);
+    expect(page.status).toBe(302);
+    expect(page.headers.get("location")).toBe(`${path}/payme`);
+    const go = await app.request(`${path}/payme`);
+    expect(go.headers.get("location")).toMatch(/^https:\/\/checkout\.paycom\.uz\//);
+    expect((await app.request("/pay/soxta.havola")).status).toBe(404);
+
+    expect(await (await call("/v1/earnings", { key: apiKey })).json()).toMatchObject({ netUzs: 0, balanceUzs: 0 });
+    expect((await call("/admin/payouts", { method: "POST", headers: { "x-admin-token": "admin-secret" }, body: JSON.stringify({ tenantId: "00000000-0000-0000-0000-000000000000", amountUzs: 1, reference: "x" }) })).status).toBe(422);
+    await call(`/v1/clones/${cloneId}/monetization`, { method: "PATCH", key: apiKey, body: JSON.stringify({ enabled: false }) });
   });
 
   it("vidjet skripti va klon sahifasi", async () => {

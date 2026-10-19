@@ -65,7 +65,7 @@ Ikkalasi ham xato bersa, tizim qoidalar asosidagi tekshiruvga qaytadi. `TEI_RERA
 
 ```bash
 pnpm typecheck
-TEST_DATABASE_URL=postgres://aiclone:aiclone@localhost:5432/aiclone pnpm test   # 139 test: RLS, to'lov, ovoz (STT va klon), fayl, LLM qadamlari, Telegram, Instagram, WhatsApp
+TEST_DATABASE_URL=postgres://aiclone:aiclone@localhost:5432/aiclone pnpm test   # 144 test: RLS, to'lovlar, monetizatsiya, ovoz, fayl, LLM qadamlari, Telegram, Instagram, WhatsApp
 ```
 
 ### API qisqacha
@@ -89,6 +89,9 @@ TEST_DATABASE_URL=postgres://aiclone:aiclone@localhost:5432/aiclone pnpm test   
 | POST | `/telegram/:id` | Telegram webhook (`X-Telegram-Bot-Api-Secret-Token` bilan) |
 | GET/POST/DELETE | `/v1/clones/:id/channels` · `/channels/instagram` · `/channels/whatsapp` | Instagram DM va WhatsApp Cloud API kanallarini ulash |
 | GET/POST/PATCH/DELETE | `/v1/clones/:id/voice` · `/voice/consent` · `/voice/preview` | Ovoz kloni: rozilik matni, yozib olish, rejim, eshitib ko'rish, qaytarib olish |
+| GET/PATCH | `/v1/clones/:id/monetization` · POST `/v1/clones/:id/products` · PATCH `/v1/products/:id` · GET `/v1/earnings` | Klon monetizatsiyasi: pullik kirish, mahsulotlar, daromad |
+| GET | `/pay/:token` · `/pay/:token/{payme,click}` | Obunachi to'lov sahifasi (imzolangan havola) |
+| POST | `/admin/payouts` (`x-admin-token`) | Kreatorga to'lab berilgan summani qayd etish |
 | GET/POST | `/meta/webhook` | Meta webhooki: tasdiqlash (`hub.challenge`) va `X-Hub-Signature-256` imzosi bilan xabarlar |
 
 ### Telegram: ikki rejim
@@ -142,9 +145,18 @@ Keyin tizim quyidagicha ishlaydi:
 - **Biometrik ma'lumot:** rozilik yozuvi faqat bazada saqlanadi, ilova roli uni o'qiy olmaydi. Rozilik qaytarib olinsa, ovoz provayderdan o'chiriladi va yozuv tozalanadi.
 - **Huquqiy cheklov:** 2026-yil mart o'zgartirishiga ko'ra, UZ fuqarolari biometrik ma'lumotlari faqat O'zbekistonda qayta ishlanadi. Shuning uchun `uz` regionidagi tenantlar uchun xorijiy provayder (ElevenLabs) sukut bo'yicha bloklanadi. Yechim: mahalliy TTS provayderi (`VoiceCloner` interfeysi) yoki yurist xulosasi bilan `VOICE_ALLOW_CROSS_BORDER=1`.
 
+### Klon monetizatsiyasi
+
+Egasi **Daromad** bo'limida mahsulot yaratadi (masalan, "50 ta savol" paketi yoki "30 kun cheksiz" obunasi) va pullik kirishni yoqadi.
+- **Bepul savollar:** har bir obunachi oyiga N ta savolni bepul beradi. Shundan keyin klon LLM chaqirmasdan to'lov taklifini yuboradi. Vidjetda taklif tugma sifatida, Telegram, Instagram va WhatsApp'da havola sifatida ko'rinadi.
+- **Havolalar:** HMAC bilan imzolangan va 7 kun amal qiladi. To'lov mavjud Payme/Click oqimi orqali o'tadi.
+- **To'lovdan keyin:** obunachi huquq oladi. Paketda har bir javob bitta savolni yechadi, obuna esa muddat tugaguncha cheksiz.
+- **Hisob-kitob:** platforma 12% komissiya oladi. Kreator balansi = sof daromad − to'lab berilgan summa. Pul qaytarilsa, huquq bekor qilinadi va daromadga teskari yozuv qo'shiladi.
+
+> ⚠️ Platforma kreator nomidan pul qabul qiladi. Prod'dan oldin quyidagilarni yuristingiz va buxgalteringiz bilan hal qiling: kreatorlar bilan agentlik shartnomasi, to'lov tizimining marketplace (sub-merchant) shartlari, soliq (QQS, kreator daromadi).
+
 ### Keyingi qadamlar (v1–v2, `docs/02-mahsulot-prd.md`)
 
-- Klon monetizatsiyasi: obunachilar klonga to'laydi, egasiga to'lov o'tkaziladi.
 - Skanerlangan PDF'lar uchun OCR; Telegram kanalini avtomatik sinxronlash.
 - Webhook yangilanishlarini navbat (pg-boss) orqali qayta ishlash. Hozir javob webhook so'rovi ichida tayyorlanadi.
 - Video-avatar, klonlar marketpleysi, white-label.

@@ -13,6 +13,7 @@ const app = createApp(rt.service, {
   telegram: rt.telegram,
   meta: rt.meta,
   voice: rt.voice,
+  monetization: rt.monetization,
 }, rt.billing);
 
 const port = Number(process.env.PORT ?? 8787);

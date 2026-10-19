@@ -2,12 +2,14 @@ import { MAX_FILE_BYTES, UnsupportedFileError, fetchYouTubeTranscript, parseFile
 import { createWebhookDispatcher } from "@ai-clone/bot";
 import {
   MetaConnectError,
+  MonetizationError,
   PaymentNotConfiguredError,
   TelegramConnectError,
   VoiceError,
   type BillingService,
   type CloneService,
   type MetaChannels,
+  type MonetizationService,
   type TelegramChannels,
   type VoiceService,
 } from "@ai-clone/db";
@@ -21,7 +23,7 @@ import { z } from "zod";
 import { fetchUrlText } from "./fetch-url.js";
 import { RateLimiter } from "./rate-limit.js";
 import { dashboardHtml } from "./dashboard.js";
-import { clonePageHtml, widgetJs } from "./widget.js";
+import { clonePageHtml, payPageHtml, widgetJs } from "./widget.js";
 
 export interface AppConfig {
   adminToken?: string;
@@ -36,6 +38,7 @@ export interface AppConfig {
   /** Instagram DM va WhatsApp (Meta ilovasi). */
   meta?: { channels: MetaChannels; appSecret: string; verifyToken: string } | null;
   voice?: VoiceService | null;
+  monetization?: MonetizationService | null;
 }
 
 type Env = { Variables: { tenantId: string } };
@@ -85,6 +88,16 @@ const schemas = {
   mode: z.object({ mode: z.enum(["bot", "human", "paused"]) }),
   reply: z.object({ text: z.string().min(1).max(4000) }),
   order: z.object({ plan: z.enum(["creator", "pro", "business"]), months: z.union([z.literal(1), z.literal(3), z.literal(6), z.literal(12)]).default(1), provider: z.enum(["payme", "click"]) }),
+  monetization: z.object({ enabled: z.boolean().optional(), freeMessages: z.number().int().min(0).max(1000).optional() }),
+  product: z.object({
+    title: z.string().min(1).max(120),
+    kind: z.enum(["pack", "subscription"]),
+    messages: z.number().int().min(1).max(100000).optional(),
+    days: z.number().int().min(1).max(366).optional(),
+    priceUzs: z.number().int().min(1000).max(100_000_000),
+  }),
+  productPatch: z.object({ active: z.boolean() }),
+  payout: z.object({ tenantId: z.string().uuid(), amountUzs: z.number().int().min(1), reference: z.string().min(1).max(200) }),
   voiceMode: z.object({ mode: z.enum(["off", "voice_in", "always"]) }),
   voicePreview: z.object({ text: z.string().min(1).max(300) }),
   instagram: z.object({ accessToken: z.string().min(20).max(1000) }),
@@ -109,7 +122,7 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
   app.onError((err, c) => {
     if (err instanceof HTTPException) return c.json({ error: err.message }, err.status);
     if (err instanceof PaymentNotConfiguredError) return c.json({ error: err.message }, 503);
-    if (err instanceof TelegramConnectError || err instanceof MetaConnectError || err instanceof VoiceError) return c.json({ error: err.message }, err.status);
+    if (err instanceof TelegramConnectError || err instanceof MetaConnectError || err instanceof VoiceError || err instanceof MonetizationError) return c.json({ error: err.message }, err.status);
     if (err.message.includes("topilmadi")) return c.json({ error: err.message }, 404);
     if ((err as { code?: string }).code === "23505") return c.json({ error: "Bunday yozuv allaqachon mavjud" }, 409);
     console.error(err);
@@ -124,6 +137,14 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
     if (!cfg.adminToken || c.req.header("x-admin-token") !== cfg.adminToken) throw new HTTPException(401, { message: "Admin token noto'g'ri" });
     const { name, plan } = await body(c, schemas.tenant);
     return c.json(await svc.createTenant(name, plan), 201);
+  });
+
+  app.post("/admin/payouts", async (c) => {
+    if (!cfg.adminToken || c.req.header("x-admin-token") !== cfg.adminToken) throw new HTTPException(401, { message: "Admin token noto'g'ri" });
+    if (!cfg.monetization) throw new HTTPException(503, { message: "Monetizatsiya yoqilmagan" });
+    const p = await body(c, schemas.payout);
+    await cfg.monetization.recordPayout(p.tenantId, p.amountUzs, p.reference);
+    return c.json({ ok: true }, 201);
   });
 
   // --- Tenant API (Authorization: Bearer <api key>) ---
@@ -352,6 +373,33 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
     return c.body(out.audio as unknown as ArrayBuffer, 200, { "content-type": out.mimeType, "cache-control": "no-store" });
   });
 
+  // --- Klon monetizatsiyasi ---
+  const monOr503 = () => {
+    if (!cfg.monetization) throw new HTTPException(503, { message: "Monetizatsiya yoqilmagan (PAYMENT_LINK_SECRET va PUBLIC_BASE_URL kerak)" });
+    return cfg.monetization;
+  };
+  v1.get("/clones/:id/monetization", async (c) => {
+    await cloneOr404(c);
+    if (!cfg.monetization) return c.json({ available: false });
+    return c.json({ available: true, ...(await cfg.monetization.settings(t(c), c.req.param("id"))) });
+  });
+  v1.patch("/clones/:id/monetization", async (c) => {
+    await cloneOr404(c);
+    await monOr503().updateSettings(t(c), c.req.param("id"), await body(c, schemas.monetization));
+    return c.json({ ok: true });
+  });
+  v1.post("/clones/:id/products", async (c) => {
+    await cloneOr404(c);
+    const p = await body(c, schemas.product);
+    return c.json(await monOr503().createProduct(t(c), c.req.param("id"), p), 201);
+  });
+  v1.patch("/products/:id", async (c) => {
+    const { active } = await body(c, schemas.productPatch);
+    await monOr503().setProductActive(t(c), c.req.param("id"), active);
+    return c.json({ ok: true });
+  });
+  v1.get("/earnings", async (c) => c.json(await monOr503().earnings(t(c))));
+
   const billingOr503 = () => {
     if (!billing) throw new HTTPException(503, { message: "To'lovlar yoqilmagan" });
     return billing;
@@ -419,7 +467,7 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
     if (!target) throw new HTTPException(404, { message: "Klon topilmadi" });
     const { visitorId, message } = await body(c, schemas.publicChat);
     const out = await svc.chat(target.tenantId, target.cloneId, { channel: "web", externalId: visitorId, message });
-    return c.json({ reply: out.reply, citations: out.citations, messageId: out.messageId, humanMode: out.mode !== "bot" });
+    return c.json({ reply: out.reply, citations: out.citations, messageId: out.messageId, humanMode: out.mode !== "bot", ...(out.paywall ? { offers: out.paywall.offers } : {}) });
   });
   app.get("/public/:slug/updates", async (c) => {
     const target = await svc.resolveSlug(c.req.param("slug"));
@@ -428,6 +476,18 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
     const after = new Date(c.req.query("after") ?? 0);
     const rows = await svc.ownerMessagesSince(target.tenantId, target.cloneId, "web", visitorId, Number.isNaN(after.getTime()) ? new Date(0) : after);
     return c.json(rows.map((r) => ({ id: r.id, text: r.content, at: r.created_at })));
+  });
+  // --- Obunachi to'lov sahifasi: imzolangan havola → to'lov tizimini tanlash → checkout ---
+  app.get("/pay/:token", async (c) => {
+    const info = cfg.monetization ? await cfg.monetization.productForLink(c.req.param("token")) : null;
+    if (!info) return c.html(payPageHtml(null, c.req.param("token")), 404);
+    if (info.providers.length === 1) return c.redirect(`/pay/${c.req.param("token")}/${info.providers[0]}`);
+    return c.html(payPageHtml(info, c.req.param("token")));
+  });
+  app.get("/pay/:token/:provider{payme|click}", async (c) => {
+    if (!cfg.monetization) return c.text("Monetizatsiya yoqilmagan", 404);
+    const { checkoutUrl } = await cfg.monetization.checkout(c.req.param("token"), c.req.param("provider") as "payme" | "click");
+    return c.redirect(checkoutUrl);
   });
   app.get("/widget.js", (c) => c.body(widgetJs(cfg.publicBaseUrl ?? new URL(c.req.url).origin), 200, { "content-type": "application/javascript; charset=utf-8", "cache-control": "public, max-age=300" }));
   app.get("/c/:slug", async (c) => {

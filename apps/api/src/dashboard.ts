@@ -94,7 +94,7 @@ function cloneForm(){const f={slug:h("input",{placeholder:"dilnoza",required:tru
 
 function selectClone(id){clone=clones.find(c=>c.id===id)||clones[0]||null;store.set(CLONE,clone&&clone.id);render();}
 
-const TABS=[["inbox","Inbox"],["knowledge","Bilim"],["style","Uslub"],["leads","Lidlar"],["stats","Statistika"],["connect","Ulash"],["voice","Ovoz"],["billing","Tarif"],["settings","Sozlamalar"]];
+const TABS=[["inbox","Inbox"],["knowledge","Bilim"],["style","Uslub"],["leads","Lidlar"],["stats","Statistika"],["connect","Ulash"],["voice","Ovoz"],["earn","Daromad"],["billing","Tarif"],["settings","Sozlamalar"]];
 function render(){clearInterval(timer);const app=$("#app");app.replaceChildren();
   if(!apiKey){app.append(renderLogin());return;}
   const sel=h("select",{"aria-label":"Klon",onchange:(e)=>e.target.value==="__new"?(clone=null,render()):selectClone(e.target.value)},
@@ -104,7 +104,7 @@ function render(){clearInterval(timer);const app=$("#app");app.replaceChildren()
   if(!clone){main.append(h("div",{style:"max-width:520px"},cloneForm()));return;}
   main.append(h("nav",{},TABS.map(([id,label])=>h("button",{class:tab===id?"on":"",onclick:()=>{tab=id;render();}},label))));
   const view=h("div");main.append(view);
-  ({inbox:viewInbox,knowledge:viewKnowledge,style:viewStyle,leads:viewLeads,stats:viewStats,connect:viewConnect,voice:viewVoice,billing:viewBilling,settings:viewSettings})[tab](view).catch(e=>toast(e.message,true));}
+  ({inbox:viewInbox,knowledge:viewKnowledge,style:viewStyle,leads:viewLeads,stats:viewStats,connect:viewConnect,voice:viewVoice,earn:viewEarn,billing:viewBilling,settings:viewSettings})[tab](view).catch(e=>toast(e.message,true));}
 
 // --- Inbox ---
 let openConv=null,onlyAlerts=false;
@@ -266,6 +266,30 @@ async function viewVoice(view){let st;try{st=await api("/v1/clones/"+clone.id+"/
         player.src=URL.createObjectURL(await res.blob());player.style.display="block";player.play().catch(()=>{});})},"▶ Tinglash")),player),
     h("div",{class:"card"},h("h3",{},"Rozilikni qaytarib olish"),h("p",{class:"small muted"},"Ovoz provayderdan o'chiriladi, rozilik yozuvi tozalanadi, klon faqat matnda javob beradi."),
       h("button",{class:"ghost",onclick:guard(async()=>{if(!confirm("Ovoz kloni butunlay o'chirilsinmi?"))return;await api("/v1/clones/"+clone.id+"/voice",{method:"DELETE"});toast("Ovoz o'chirildi");render();})},"Ovozni o'chirish"))));}
+
+// --- Daromad (klon monetizatsiyasi) ---
+async function viewEarn(view){const m=await api("/v1/clones/"+clone.id+"/monetization");
+  if(!m.available){view.append(h("div",{class:"card"},h("h3",{},"Klon orqali daromad"),h("p",{class:"muted"},"Serverda monetizatsiya yoqilmagan (PAYMENT_LINK_SECRET, PUBLIC_BASE_URL).")));return;}
+  const e=await api("/v1/earnings");const som=(n)=>Number(n).toLocaleString("ru-RU").replace(/,/g," ")+" so'm";
+  const enabled=h("input",{type:"checkbox",style:"width:auto",checked:m.enabled}),free=h("input",{type:"number",min:"0",max:"1000",value:m.freeMessages,style:"width:120px"});
+  const f={title:h("input",{required:true,placeholder:"50 ta savol"}),kind:h("select",{},[["pack","Savollar paketi"],["subscription","Obuna (kunlar)"]].map(([v,l])=>h("option",{value:v},l))),
+    amount:h("input",{type:"number",min:"1",required:true,placeholder:"50",style:"width:120px"}),price:h("input",{type:"number",min:"1000",step:"1000",required:true,placeholder:"49000",style:"width:160px"})};
+  const unit=h("span",{class:"small muted"},"savol");f.kind.onchange=()=>{unit.textContent=f.kind.value==="pack"?"savol":"kun";};
+  view.append(h("div",{class:"stats",style:"margin-bottom:16px"},[["Sof daromad",som(e.netUzs)],["Balans (to'lanadigan)",som(e.balanceUzs)],["Yalpi tushum",som(e.grossUzs)],["Platforma komissiyasi ("+Math.round(m.commissionRate*100)+"%)",som(e.commissionUzs)]].map(([l,v])=>h("div",{class:"card stat"},h("b",{style:"font-size:22px"},v),h("span",{},l)))),
+    h("div",{class:"grid"},
+      h("form",{class:"card",onsubmit:guard(async()=>{await patch("/v1/clones/"+clone.id+"/monetization",{enabled:enabled.checked,freeMessages:Number(free.value)});toast("Saqlandi");})},
+        h("h3",{},"Pullik kirish"),h("label",{class:"row",style:"color:var(--ink)"},enabled,"Bepul savollardan keyin to'lov so'rash"),
+        h("label",{},"Har bir obunachiga oyiga bepul savollar"),free,!m.providers.length&&h("p",{class:"small",style:"color:var(--accent)"},"To'lov tizimi (Payme/Click) sozlanmagan."),
+        h("div",{style:"margin-top:12px"},h("button",{type:"submit"},"Saqlash"))),
+      h("form",{class:"card",onsubmit:guard(async()=>{const b={title:f.title.value.trim(),kind:f.kind.value,priceUzs:Number(f.price.value)};b[f.kind.value==="pack"?"messages":"days"]=Number(f.amount.value);
+          await post("/v1/clones/"+clone.id+"/products",b);toast("Mahsulot qo'shildi");render();})},
+        h("h3",{},"Yangi mahsulot"),h("label",{},"Nomi"),f.title,h("label",{},"Turi"),f.kind,h("label",{},"Hajmi"),h("div",{class:"row"},f.amount,unit),h("label",{},"Narxi (so'm)"),f.price,
+        h("div",{style:"margin-top:12px"},h("button",{type:"submit"},"Qo'shish")))),
+    h("div",{class:"card",style:"margin-top:16px"},h("h3",{},"Mahsulotlar"),m.products.length?h("div",{class:"tablewrap"},h("table",{},h("thead",{},h("tr",{},["Nomi","Turi","Narxi","Holat",""].map(x=>h("th",{},x)))),
+      h("tbody",{},m.products.map(p=>h("tr",{},h("td",{},p.title),h("td",{},p.kind==="pack"?p.messages+" ta savol":p.days+" kun"),h("td",{},som(p.priceUzs)),h("td",{},h("span",{class:"badge"},p.active?"faol":"o'chiq")),
+        h("td",{},h("button",{class:"ghost small",onclick:guard(async()=>{await patch("/v1/products/"+p.id,{active:!p.active});render();})},p.active?"O'chirish":"Yoqish"))))))):h("p",{class:"muted"},"Hali mahsulot yo'q.")),
+    h("div",{class:"card",style:"margin-top:16px"},h("h3",{},"Obunachilar to'lovlari"),e.recent.length?h("div",{class:"tablewrap"},h("table",{},h("thead",{},h("tr",{},["№","Mahsulot","Xaridor","Summa","Holat","Sana"].map(x=>h("th",{},x)))),
+      h("tbody",{},e.recent.map(o=>h("tr",{},h("td",{},o.id),h("td",{},o.product),h("td",{},(o.buyer||"Mehmon")+" · "+(o.channel||"")),h("td",{},som(o.amount_uzs)),h("td",{},h("span",{class:"badge"},STATUS[o.status]||o.status)),h("td",{class:"small muted"},fmt(o.created_at))))))):h("p",{class:"muted"},"Hali to'lov yo'q.")));}
 
 // --- Tarif ---
 const PLAN_NAMES={free:"Free",creator:"Creator",pro:"Pro",business:"Business",enterprise:"Enterprise"};
