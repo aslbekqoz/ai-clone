@@ -39,7 +39,7 @@ packages/core   AI yadro: o'zbek matnini normallashtirish (lotin/kirill), chunki
 packages/db     Postgres + pgvector sxemasi, har bir jadvalda RLS, bilim ombori, CloneService
                 (chat, lidlar, human takeover, tuzatish → tasdiqlangan javob, limitlar)
 apps/api        HTTP API (Hono), egasi dashboardi (/app), sayt vidjeti (/widget.js), ommaviy klon sahifasi (/c/<slug>)
-apps/bot        Telegram bot (grammY): suhbat, /forget, egasiga eskalatsiya, /reply /takeover /bot
+apps/bot        Telegram bot (grammY): suhbat, ovozli xabarlar (STT), /forget, egasiga eskalatsiya, /reply /takeover /bot
 ```
 
 ### Ishga tushirish
@@ -59,7 +59,7 @@ TELEGRAM_BOT_TOKEN=... pnpm dev:bot  # ixtiyoriy: Telegram bot
 
 ```bash
 pnpm typecheck
-TEST_DATABASE_URL=postgres://aiclone:aiclone@localhost:5432/aiclone pnpm test   # 77 test: RLS izolyatsiyasi va to'lov oqimlari ham bor
+TEST_DATABASE_URL=postgres://aiclone:aiclone@localhost:5432/aiclone pnpm test   # 85 test: RLS izolyatsiyasi, to'lov va ovoz oqimlari ham bor
 ```
 
 ### API qisqacha
@@ -99,7 +99,7 @@ Barcha `/v1` so'rovlari `Authorization: Bearer <api kalit>` sarlavhasini talab q
 
 ### MVP'da hali yo'q (keyingi qadamlar)
 
-- Ovozli xabarlarni tushunish (STT), PDF/DOCX parserlari, YouTube transkriptlari.
+- PDF/DOCX parserlari, YouTube transkriptlari.
 - So'rovni LLM orqali qayta yozish, reranker va LLM asosidagi eskalatsiya klassifikatori. Hozircha qoidalar asosida ishlaydi.
 - Ko'p klonli Telegram webhook marshrutlash. Hozir bitta bot bitta klonga xizmat qiladi.
 

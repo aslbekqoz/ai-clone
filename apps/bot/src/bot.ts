@@ -1,12 +1,19 @@
-import { stripCitationMarkers } from "@ai-clone/core";
+import { stripCitationMarkers, type SpeechToText } from "@ai-clone/core";
 import type { CloneRecord, CloneService } from "@ai-clone/db";
 import { Bot, type Context } from "grammy";
+import type { UserFromGetMe } from "grammy/types";
 import { escalationNotice, parseOwnerCommand } from "./owner-commands.js";
+import { transcribeTelegramFile, VOICE_REPLIES } from "./voice.js";
 
 export interface BotConfig {
   token: string;
   tenantId: string;
   clone: CloneRecord;
+  /** Yo'q bo'lsa, ovozli xabarlarga "yozib yuboring" deb javob beriladi. */
+  stt?: SpeechToText;
+  /** Testlar uchun: bot ma'lumoti (getMe chaqirilmaydi) va fayl yuklash funksiyasi. */
+  botInfo?: UserFromGetMe;
+  fetchFn?: typeof fetch;
 }
 
 const CONSENT =
@@ -14,7 +21,7 @@ const CONSENT =
 
 /** Bitta klon uchun Telegram bot. Ko'p klonli webhook marshrutlash — v1 (04-hujjat §9). */
 export function createBot(svc: CloneService, cfg: BotConfig): Bot {
-  const bot = new Bot(cfg.token);
+  const bot = new Bot(cfg.token, cfg.botInfo ? { botInfo: cfg.botInfo } : {});
   const { tenantId, clone } = cfg;
   const ownerChatId = clone.ownerTelegramChatId;
   const isOwner = (ctx: Context) => ownerChatId !== null && String(ctx.chat?.id) === ownerChatId;
@@ -44,16 +51,11 @@ export function createBot(svc: CloneService, cfg: BotConfig): Bot {
     }
   });
 
-  bot.on(["message:voice", "message:audio", "message:video_note"], (ctx) =>
-    // STT (ElevenLabs Scribe / fine-tune Whisper) — MVP'ning keyingi qadami (02-hujjat F7).
-    ctx.reply("🎙 Ovozli xabarlarni tez orada tushunadigan bo'laman. Hozircha savolingizni yozib yuboring, iltimos."),
-  );
-
-  bot.on("message:text", async (ctx) => {
-    if (isOwner(ctx)) return ctx.reply("Siz klon egasisiz 🙂 Boshqaruv buyruqlari: /reply, /takeover, /bot");
-    await ctx.replyWithChatAction("typing");
-    const userName = [ctx.from.first_name, ctx.from.last_name].filter(Boolean).join(" ") || ctx.from.username || "Foydalanuvchi";
-    const out = await svc.chat(tenantId, clone.id, { channel: "telegram", externalId: String(ctx.from.id), name: userName, message: ctx.message.text });
+  /** Foydalanuvchi xabariga klon javobi (matn yoki ovozdan olingan matn). */
+  async function answer(ctx: Context, message: string, voice?: { seconds: number }): Promise<void> {
+    const from = ctx.from!;
+    const userName = [from.first_name, from.last_name].filter(Boolean).join(" ") || from.username || "Foydalanuvchi";
+    const out = await svc.chat(tenantId, clone.id, { channel: "telegram", externalId: String(from.id), name: userName, message, ...(voice ? { meta: { voiceSeconds: voice.seconds } } : {}) });
 
     if (out.reply) {
       const sources = out.citations.map((c) => (c.url ? `• ${c.title}: ${c.url}` : `• ${c.title}`));
@@ -62,9 +64,30 @@ export function createBot(svc: CloneService, cfg: BotConfig): Bot {
     }
     if (ownerChatId && (out.escalated || out.leadCaptured || out.mode !== "bot")) {
       await bot.api
-        .sendMessage(ownerChatId, escalationNotice({ conversationId: out.conversationId, userName, message: ctx.message.text, reasons: out.mode !== "bot" ? ["human_mode"] : out.escalationReasons, leadCaptured: out.leadCaptured }))
+        .sendMessage(ownerChatId, escalationNotice({ conversationId: out.conversationId, userName, message: voice ? `🎙 ${message}` : message, reasons: out.mode !== "bot" ? ["human_mode"] : out.escalationReasons, leadCaptured: out.leadCaptured }))
         .catch((err: unknown) => console.error("Egasiga xabar yuborilmadi:", err));
     }
+  }
+
+  bot.on(["message:voice", "message:audio", "message:video_note"], async (ctx) => {
+    if (isOwner(ctx)) return;
+    if (!cfg.stt) return void (await ctx.reply(VOICE_REPLIES.disabled));
+    const media = ctx.message.voice ?? ctx.message.audio ?? ctx.message.video_note!;
+    await ctx.replyWithChatAction("typing");
+    const file = await ctx.api.getFile(media.file_id);
+    if (!file.file_path) return void (await ctx.reply(VOICE_REPLIES.download_failed));
+    const mimeType = "mime_type" in media && media.mime_type ? media.mime_type : ctx.message.video_note ? "video/mp4" : "audio/ogg";
+    const result = await transcribeTelegramFile(cfg.stt, cfg.token, { filePath: file.file_path, mimeType, durationSec: media.duration }, cfg.fetchFn);
+    if (!result.ok) return void (await ctx.reply(VOICE_REPLIES[result.reason]));
+    // Foydalanuvchi nima tushunilganini ko'rsin — noto'g'ri tanilgan bo'lsa, yozib yuboradi.
+    await ctx.reply(`🎙 «${result.text.slice(0, 300)}»`);
+    await answer(ctx, result.text, { seconds: media.duration });
+  });
+
+  bot.on("message:text", async (ctx) => {
+    if (isOwner(ctx)) return ctx.reply("Siz klon egasisiz 🙂 Boshqaruv buyruqlari: /reply, /takeover, /bot");
+    await ctx.replyWithChatAction("typing");
+    await answer(ctx, ctx.message.text);
   });
 
   bot.catch((err) => {

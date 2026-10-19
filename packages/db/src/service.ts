@@ -54,6 +54,8 @@ export interface ChatInput {
   externalId: string;
   name?: string;
   message: string;
+  /** Xabar ovozdan olingan bo'lsa — uzunligi (STT xarajatini kuzatish uchun). */
+  meta?: { voiceSeconds?: number };
 }
 
 export interface ChatOutcome {
@@ -256,7 +258,7 @@ export class CloneService {
     };
 
     if (ctx.conv.mode !== "bot" || ctx.limit) {
-      await withTenant(this.db, tenantId, (tx) => insertMessage(tx, tenantId, ctx.conv.id, { role: "user", content: input.message, lang: detectLang(input.message) }));
+      await withTenant(this.db, tenantId, (tx) => insertMessage(tx, tenantId, ctx.conv.id, { role: "user", content: input.message, lang: detectLang(input.message), ...(input.meta ? { flags: input.meta } : {}) }));
       if (ctx.limit) {
         const reply = "Hozir javob bera olmayman — savolingiz egamga yetkazildi, tez orada javob berishadi.";
         return { ...base, reply, messageId: null };
@@ -272,7 +274,7 @@ export class CloneService {
 
     // 3. Saqlash: xabarlar, xarajat, eskalatsiya, lid.
     return withTenant(this.db, tenantId, async (tx) => {
-      await insertMessage(tx, tenantId, ctx.conv.id, { role: "user", content: input.message, lang: result.lang });
+      await insertMessage(tx, tenantId, ctx.conv.id, { role: "user", content: input.message, lang: result.lang, ...(input.meta ? { flags: input.meta } : {}) });
       const messageId = await insertMessage(tx, tenantId, ctx.conv.id, {
         role: "assistant",
         content: result.reply,

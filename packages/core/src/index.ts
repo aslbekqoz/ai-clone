@@ -16,3 +16,4 @@ export * from "./guardrails/escalation.js";
 export * from "./guardrails/pii.js";
 export * from "./orchestrator/turn.js";
 export * from "./ingest/telegram.js";
+export * from "./speech/stt.js";

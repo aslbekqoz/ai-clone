@@ -19,10 +19,10 @@ if (!target) {
 }
 const clone = (await rt.service.getClone(target.tenantId, target.cloneId))!;
 
-const bot = createBot(rt.service, { token, tenantId: target.tenantId, clone });
+const bot = createBot(rt.service, { token, tenantId: target.tenantId, clone, ...(rt.stt ? { stt: rt.stt } : {}) });
 await bot.api.setMyCommands([
   { command: "start", description: "Boshlash" },
   { command: "forget", description: "Mening ma'lumotlarimni o'chirish" },
 ]);
-console.log(`🤖 ${clone.persona.name} kloni Telegramda ishlamoqda (LLM: ${rt.llm})`);
+console.log(`🤖 ${clone.persona.name} kloni Telegramda ishlamoqda (LLM: ${rt.llm}, ovoz: ${rt.stt ? rt.stt.id : "o'chiq"})`);
 await bot.start();
