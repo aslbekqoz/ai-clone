@@ -38,7 +38,7 @@ packages/core   AI yadro: o'zbek matnini normallashtirish (lotin/kirill), chunki
                 circuit breaker, xarajat hisobi), Claude adapteri, Telegram eksporti parseri
 packages/db     Postgres + pgvector sxemasi, har bir jadvalda RLS, bilim ombori, CloneService
                 (chat, lidlar, human takeover, tuzatish → tasdiqlangan javob, limitlar)
-apps/api        HTTP API (Hono), sayt vidjeti (/widget.js), ommaviy klon sahifasi (/c/<slug>)
+apps/api        HTTP API (Hono), egasi dashboardi (/app), sayt vidjeti (/widget.js), ommaviy klon sahifasi (/c/<slug>)
 apps/bot        Telegram bot (grammY): suhbat, /forget, egasiga eskalatsiya, /reply /takeover /bot
 ```
 
@@ -49,7 +49,7 @@ pnpm install
 docker compose up -d                 # Postgres 16 + pgvector
 cp .env.example .env && set -a && . ./.env && set +a
 pnpm seed                            # demo klon: "Dilnoza (IELTS)" + API kalit
-pnpm dev:api                         # http://localhost:8787/c/dilnoza-demo
+pnpm dev:api                         # dashboard: http://localhost:8787/app · klon: /c/dilnoza-demo
 TELEGRAM_BOT_TOKEN=... pnpm dev:bot  # ixtiyoriy: Telegram bot
 ```
 
@@ -81,7 +81,6 @@ Barcha `/v1` so'rovlari `Authorization: Bearer <api kalit>` sarlavhasini talab q
 
 ### MVP'da hali yo'q (keyingi qadamlar)
 
-- Egasining veb-dashboardi. Hozircha API va Telegramdagi `/reply`, `/takeover` buyruqlari orqali boshqariladi.
 - Ovozli xabarlarni tushunish (STT), PDF/DOCX parserlari, YouTube transkriptlari.
 - Payme/Click to'lovlari va tariflarni avtomatik almashtirish. Xabar va xarajat limitlari tayyor (`tenants.monthly_message_limit`, `daily_spend_cap_usd`).
 - So'rovni LLM orqali qayta yozish, reranker va LLM asosidagi eskalatsiya klassifikatori. Hozircha qoidalar asosida ishlaydi.

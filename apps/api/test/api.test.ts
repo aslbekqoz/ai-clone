@@ -116,6 +116,29 @@ describe.skipIf(!url)("HTTP API (Postgres)", () => {
     expect(updates.map((u) => u.text)).toEqual(["Ha, 10% bor!"]);
   });
 
+  it("dashboard endpointlari: klonlar ro'yxati, tahrirlash, manbalar", async () => {
+    const list = (await (await call("/v1/clones", { key: apiKey })).json()) as { id: string }[];
+    expect(list.map((c) => c.id)).toContain(cloneId);
+    expect(await (await call("/v1/clones", { key: otherKey })).json()).toEqual([]);
+
+    const patched = (await (await call(`/v1/clones/${cloneId}`, { method: "PATCH", key: apiKey, body: JSON.stringify({ bio: "Yangi bio", ownerTelegramChatId: "777" }) })).json()) as {
+      persona: { bio: string; name: string };
+      ownerTelegramChatId: string;
+    };
+    expect(patched.persona).toMatchObject({ bio: "Yangi bio", name: "Dilnoza" });
+    expect(patched.ownerTelegramChatId).toBe("777");
+
+    const sources = (await (await call(`/v1/clones/${cloneId}/sources`, { key: apiKey })).json()) as { id: string; chunks: number }[];
+    expect(sources[0]?.chunks).toBe(1);
+    expect((await call(`/v1/sources/${sources[0]!.id}`, { method: "DELETE", key: otherKey })).status).toBe(404);
+    expect((await call(`/v1/sources/${sources[0]!.id}`, { method: "DELETE", key: apiKey })).status).toBe(200);
+    expect(await (await call(`/v1/clones/${cloneId}/sources`, { key: apiKey })).json()).toEqual([]);
+
+    const app = await call("/app");
+    expect(app.headers.get("x-frame-options")).toBe("DENY");
+    expect(await app.text()).toContain("AI Clone");
+  });
+
   it("vidjet skripti va klon sahifasi", async () => {
     const js = await call("/widget.js");
     expect(js.headers.get("content-type")).toContain("javascript");

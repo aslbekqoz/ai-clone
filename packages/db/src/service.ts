@@ -126,6 +126,50 @@ export class CloneService {
     return withTenant(this.db, tenantId, (tx) => getClone(tx, cloneId));
   }
 
+  async listClones(tenantId: string): Promise<CloneRecord[]> {
+    return withTenant(this.db, tenantId, async (tx) => {
+      const { rows } = await tx.query<{ id: string }>("SELECT id FROM clones ORDER BY created_at");
+      const out: CloneRecord[] = [];
+      for (const r of rows) out.push((await getClone(tx, r.id))!);
+      return out;
+    });
+  }
+
+  /** Klonning asosiy sozlamalari (ism, bio, grounded rejim, egasining Telegram chat ID'si). */
+  async updateClone(tenantId: string, cloneId: string, patch: { name?: string; bio?: string; grounded?: boolean; ownerTelegramChatId?: string | null }): Promise<CloneRecord | null> {
+    return withTenant(this.db, tenantId, async (tx) => {
+      await tx.query(
+        `UPDATE clones SET display_name = COALESCE($2, display_name), bio = COALESCE($3, bio), grounded = COALESCE($4, grounded),
+                owner_telegram_chat_id = CASE WHEN $5::boolean THEN $6::bigint ELSE owner_telegram_chat_id END,
+                disclosure_text = CASE WHEN $2 IS NULL THEN disclosure_text ELSE $7 END
+          WHERE id = $1`,
+        [cloneId, patch.name ?? null, patch.bio ?? null, patch.grounded ?? null, patch.ownerTelegramChatId !== undefined, patch.ownerTelegramChatId ?? null, patch.name ? defaultDisclosure(patch.name) : null],
+      );
+      await audit(tx, tenantId, "owner", "clone.update", cloneId);
+      return getClone(tx, cloneId);
+    });
+  }
+
+  async listSources(tenantId: string, cloneId: string) {
+    return withTenant(this.db, tenantId, async (tx) => {
+      const { rows } = await tx.query(
+        `SELECT s.id, s.type, s.title, s.uri, s.status, s.created_at, count(c.id)::int AS chunks
+           FROM sources s LEFT JOIN chunks c ON c.source_id = s.id
+          WHERE s.clone_id = $1 GROUP BY s.id ORDER BY s.created_at DESC`,
+        [cloneId],
+      );
+      return rows;
+    });
+  }
+
+  async deleteSource(tenantId: string, sourceId: string): Promise<void> {
+    await withTenant(this.db, tenantId, async (tx) => {
+      const r = await tx.query("DELETE FROM sources WHERE id = $1", [sourceId]);
+      if (!r.rowCount) throw new Error("Manba topilmadi");
+      await audit(tx, tenantId, "owner", "source.delete", sourceId);
+    });
+  }
+
   async updateStyle(tenantId: string, cloneId: string, style: Partial<StyleProfile>): Promise<CloneRecord | null> {
     return withTenant(this.db, tenantId, async (tx) => {
       await tx.query("UPDATE clones SET style_profile = style_profile || $2::jsonb WHERE id = $1", [cloneId, JSON.stringify(style)]);

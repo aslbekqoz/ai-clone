@@ -5,6 +5,7 @@ import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { fetchUrlText } from "./fetch-url.js";
 import { RateLimiter } from "./rate-limit.js";
+import { dashboardHtml } from "./dashboard.js";
 import { clonePageHtml, widgetJs } from "./widget.js";
 
 export interface AppConfig {
@@ -38,6 +39,12 @@ const schemas = {
     style: style.optional(),
     grounded: z.boolean().optional(),
     ownerTelegramChatId: z.string().regex(/^-?\d+$/).optional(),
+  }),
+  clonePatch: z.object({
+    name: z.string().min(1).max(100).optional(),
+    bio: z.string().max(2000).optional(),
+    grounded: z.boolean().optional(),
+    ownerTelegramChatId: z.string().regex(/^-?\d+$/).nullable().optional(),
   }),
   source: z.object({
     type: z.enum(["text", "pdf", "doc", "youtube", "voice", "interview"]).default("text"),
@@ -77,6 +84,7 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}) {
   });
 
   app.get("/health", (c) => c.json({ ok: true }));
+  app.get("/app", (c) => c.html(dashboardHtml(), 200, { "cache-control": "no-store", "x-frame-options": "DENY" }));
 
   // --- Admin: tenant yaratish (keyin onboarding UI bilan almashtiriladi) ---
   app.post("/admin/tenants", async (c) => {
@@ -102,8 +110,18 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}) {
     return clone;
   };
 
+  v1.get("/clones", async (c) => c.json(await svc.listClones(t(c))));
   v1.post("/clones", async (c) => c.json(await svc.createClone(t(c), await body(c, schemas.clone)), 201));
   v1.get("/clones/:id", async (c) => c.json(await cloneOr404(c)));
+  v1.patch("/clones/:id", async (c) => {
+    await cloneOr404(c);
+    return c.json(await svc.updateClone(t(c), c.req.param("id"), await body(c, schemas.clonePatch)));
+  });
+  v1.get("/clones/:id/sources", async (c) => c.json(await svc.listSources(t(c), c.req.param("id"))));
+  v1.delete("/sources/:id", async (c) => {
+    await svc.deleteSource(t(c), c.req.param("id"));
+    return c.json({ ok: true });
+  });
   v1.patch("/clones/:id/style", async (c) => {
     await cloneOr404(c);
     return c.json(await svc.updateStyle(t(c), c.req.param("id"), await body(c, style)));
