@@ -246,7 +246,7 @@ Rejadan ataylab chetga chiqilgan joylar:
 - **Drizzle o'rniga sof SQL migratsiyalar va `pg`.** RLS siyosatlari va pgvector operatorlari SQL'da aniqroq ko'rinadi. ORM keyinroq qo'shilishi mumkin.
 - **`halfvec` o'rniga `vector(1024)`.** pgvector 0.6 bilan ham ishlashi uchun. pgvector 0.7+ da `halfvec` ga o'tish xotirani ikki barobar tejaydi.
 - **Oflayn `HashingEmbedder`.** API kalitisiz ishlab chiqish va CI uchun. Prod'da `TEI_URL` (BGE-M3) ishlatiladi; o'xshashlik chegaralari embedderning o'zida saqlanadi.
-- **Eskalatsiya klassifikatori hozircha qoidalar asosida** (UZ/RU/EN kalit iboralar). LLM klassifikatori v1 da qo'shiladi.
+- **Eskalatsiya ikki qatlamli.** Birinchisi qoidalar (UZ/RU/EN kalit iboralar): u tezkor yo'l va xavfli mavzu bo'lsa LLM'siz javob beradi. Ikkinchisi kichik modeldagi strukturali klassifikator; u xato bersa, qoidalarga qaytiladi.
 
 ## 11. Repo tuzilmasi (reja)
 

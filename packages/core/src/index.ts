@@ -19,3 +19,6 @@ export * from "./ingest/telegram.js";
 export * from "./speech/stt.js";
 export * from "./ingest/files.js";
 export * from "./ingest/youtube.js";
+export * from "./guardrails/classifier.js";
+export * from "./rag/rewrite.js";
+export * from "./rag/rerank.js";

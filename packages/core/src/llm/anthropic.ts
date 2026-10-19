@@ -22,7 +22,9 @@ export class AnthropicProvider implements LLMProvider {
         max_tokens: req.maxTokens,
         system,
         messages: req.messages.map((m) => ({ role: m.role, content: m.content })),
-        ...(req.effort ? { output_config: { effort: req.effort } } : {}),
+        ...(req.effort || req.responseSchema
+          ? { output_config: { ...(req.effort ? { effort: req.effort } : {}), ...(req.responseSchema ? { format: { type: "json_schema" as const, schema: req.responseSchema } } : {}) } }
+          : {}),
       });
     } catch (err) {
       if (
@@ -43,8 +45,18 @@ export class AnthropicProvider implements LLMProvider {
       .join("")
       .trim();
 
+    let json: unknown;
+    if (req.responseSchema && response.stop_reason !== "refusal") {
+      try {
+        json = JSON.parse(text);
+      } catch {
+        // max_tokens bilan kesilgan javob — json bo'lmaydi, chaqiruvchi fallback qiladi.
+      }
+    }
+
     return {
       text,
+      ...(json !== undefined ? { json } : {}),
       model: response.model,
       provider: this.id,
       finishReason: response.stop_reason === "refusal" ? "refusal" : response.stop_reason === "max_tokens" ? "length" : "stop",

@@ -109,6 +109,19 @@ describe.skipIf(!url)("CloneService (Postgres)", () => {
     expect(await svc.forgetEndUser(tenantA, cloneId, "telegram", "u6")).toBe(false);
   });
 
+  it("LLM klassifikatori topgan fakt foydalanuvchi xotirasiga yoziladi va keyingi javobga qo'shiladi", async () => {
+    const provider = new MockProvider((req) =>
+      req.metadata.purpose === "classify" ? JSON.stringify({ intent: "question", escalate: false, reasons: [], memory_fact: "Ismi Lola, IELTS 7.5 maqsadi" }) : "Javob [S1]",
+    );
+    const smart = new CloneService(db, new HashingEmbedder(), new LLMRouter([provider], mockPolicy()), { smart: { classifier: true } });
+    await smart.chat(tenantA, cloneId, { channel: "web", externalId: "lola", message: "Men Lola, 7.5 kerak. IELTS kursi qancha?" });
+    await smart.chat(tenantA, cloneId, { channel: "web", externalId: "lola", message: "IELTS kursi qancha davom etadi?" });
+    const last = provider.calls.filter((c) => c.req.metadata.purpose === "answer").at(-1)!;
+    expect(last.req.context).toContain("Ismi Lola, IELTS 7.5 maqsadi");
+    const mem = await withTenant(db, tenantA, async (tx) => (await tx.query("SELECT memory FROM end_users WHERE external_id = 'lola'")).rows[0].memory);
+    expect(mem).toEqual(["Ismi Lola, IELTS 7.5 maqsadi"]);
+  });
+
   it("limit tugaganda LLM chaqirilmaydi", async () => {
     const { tenantId } = await svc.createTenant("Limited");
     const c = await svc.createClone(tenantId, { slug: `limited-${suffix}`, name: "L" });

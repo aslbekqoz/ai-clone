@@ -26,6 +26,10 @@ export interface RetrieveOptions extends SimilarityThresholds {
   candidates?: number;
   topK?: number;
   reranker?: Reranker;
+  /** Reranker balli shundan past bo'lgan natijalar tashlanadi (0..1 shkala). */
+  minRerankScore?: number;
+  /** Reranker xato bersa RRF tartibi saqlanadi; xato shu yerga xabar qilinadi. */
+  onRerankError?: (err: unknown) => void;
 }
 
 export interface Retrieval {
@@ -63,11 +67,17 @@ export async function retrieve(
 
   if (opts.reranker && hits.length > 0) {
     const pool = hits.slice(0, 30);
-    const ranked = await opts.reranker.rerank(query, pool.map((h) => h.text), topK);
-    hits = ranked.flatMap((r) => {
-      const h = pool[r.index];
-      return h ? [{ ...h, score: r.score }] : [];
-    });
+    try {
+      const ranked = await opts.reranker.rerank(query, pool.map((h) => h.text), topK);
+      hits = ranked
+        .filter((r) => r.score >= (opts.minRerankScore ?? 0))
+        .flatMap((r) => {
+          const h = pool[r.index];
+          return h ? [{ ...h, score: r.score }] : [];
+        });
+    } catch (err) {
+      opts.onRerankError?.(err);
+    }
   }
 
   hits = hits.slice(0, topK);

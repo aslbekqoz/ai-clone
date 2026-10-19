@@ -13,8 +13,17 @@ export class MockProvider implements LLMProvider {
   async generate(model: string, req: GenerateRequest): Promise<Omit<GenerateResult, "costUsd" | "latencyMs">> {
     this.calls.push({ model, req });
     const text = this.reply ? this.reply(req) : defaultReply(req);
+    let json: unknown;
+    if (req.responseSchema) {
+      try {
+        json = JSON.parse(text);
+      } catch {
+        json = undefined;
+      }
+    }
     return {
       text,
+      ...(json !== undefined ? { json } : {}),
       model,
       provider: this.id,
       finishReason: "stop",

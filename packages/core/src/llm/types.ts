@@ -16,6 +16,8 @@ export interface GenerateRequest {
   messages: ChatTurn[];
   maxTokens: number;
   effort?: "low" | "medium" | "high";
+  /** Strukturali chiqish: javob shu JSON sxemaga mos bo'ladi va `json` maydonida qaytadi. */
+  responseSchema?: Record<string, unknown>;
   metadata: { tenantId: string; cloneId: string; purpose: Purpose; traceId?: string };
 }
 
@@ -28,6 +30,8 @@ export interface Usage {
 
 export interface GenerateResult {
   text: string;
+  /** responseSchema berilgan bo'lsa — tahlil qilingan JSON. */
+  json?: unknown;
   usage: Usage;
   model: string;
   provider: string;

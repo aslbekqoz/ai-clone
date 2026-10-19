@@ -53,13 +53,19 @@ pnpm dev:api                         # dashboard: http://localhost:8787/app · k
 TELEGRAM_BOT_TOKEN=... pnpm dev:bot  # ixtiyoriy: Telegram bot
 ```
 
+Claude ulanganda har bir xabarda qo'shimcha ikkita qadam ham ishlaydi, ikkalasi kichik modelda va parallel:
+- **klassifikator:** bilvosita inson so'rovi, shikoyat, xarid niyati, nozik mavzuni aniqlaydi va foydalanuvchi aytgan muhim faktni xotiraga yozadi;
+- **so'rovni qayta yozish:** "uning narxi qancha?" kabi savollarni suhbat tarixiga qarab mustaqil qidiruv so'roviga aylantiradi.
+
+Ikkalasi ham xato bersa, tizim qoidalar asosidagi tekshiruvga qaytadi. `TEI_RERANK_URL` berilsa, cross-encoder reranker ham qo'shiladi.
+
 `ANTHROPIC_API_KEY` bo'lmasa, tizim **MockProvider** bilan ishlaydi. Bu rejimda javob topilgan manbaning birinchi gapi bo'ladi, haqiqiy model emas. Kalit qo'yilsa, Claude ishlaydi: oddiy savollar `claude-haiku-5-5` ga, sotuv va murakkab savollar `claude-sonnet-5-5` ga yo'naltiriladi (`packages/core/src/llm/router.ts`, `DEFAULT_POLICY`).
 
 ### Testlar
 
 ```bash
 pnpm typecheck
-TEST_DATABASE_URL=postgres://aiclone:aiclone@localhost:5432/aiclone pnpm test   # 99 test: RLS izolyatsiyasi, to'lov, ovoz va fayl yuklash oqimlari ham bor
+TEST_DATABASE_URL=postgres://aiclone:aiclone@localhost:5432/aiclone pnpm test   # 113 test: RLS izolyatsiyasi, to'lov, ovoz, fayl yuklash va LLM qadamlari ham bor
 ```
 
 ### API qisqacha
@@ -102,7 +108,6 @@ Barcha `/v1` so'rovlari `Authorization: Bearer <api kalit>` sarlavhasini talab q
 
 ### MVP'da hali yo'q (keyingi qadamlar)
 
-- So'rovni LLM orqali qayta yozish, reranker va LLM asosidagi eskalatsiya klassifikatori. Hozircha qoidalar asosida ishlaydi.
 - Ko'p klonli Telegram webhook marshrutlash. Hozir bitta bot bitta klonga xizmat qiladi.
 
 ## Moliyaviy model

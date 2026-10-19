@@ -14,6 +14,7 @@ import {
   type Embedder,
   type LLMRouter,
   type Locator,
+  type Reranker,
   type Section,
   type StyleProfile,
 } from "@ai-clone/core";
@@ -82,11 +83,20 @@ export function hashApiKey(key: string): string {
  * Ilova servisi: API va Telegram bot shu sinf orqali ishlaydi. Har bir tenant
  * operatsiyasi withTenant() ichida — RLS boshqa tenant ma'lumotini ko'rsatmaydi.
  */
+export interface CloneServiceOptions {
+  reranker?: Reranker;
+  /** Kichik modeldagi klassifikator va so'rovni qayta yozish (04-hujjat §3.3, §3.1). */
+  smart?: { classifier?: boolean; rewrite?: boolean };
+}
+
+const MAX_MEMORY_FACTS = 20;
+
 export class CloneService {
   constructor(
     private readonly db: Db,
     private readonly embedder: Embedder,
     private readonly router: LLMRouter,
+    private readonly opts: CloneServiceOptions = {},
   ) {}
 
   // --- Tenantlar (admin, RLS'dan tashqarida) ---
@@ -288,7 +298,13 @@ export class CloneService {
 
     // 2. AI javobi — ochiq tranzaksiyasiz (qidiruv so'rovlari o'z tranzaksiyalarida).
     const result = await handleTurn(
-      { store: new PgKnowledgeStore(this.db, tenantId), embedder: this.embedder, router: this.router },
+      {
+        store: new PgKnowledgeStore(this.db, tenantId),
+        embedder: this.embedder,
+        router: this.router,
+        ...(this.opts.reranker ? { reranker: this.opts.reranker } : {}),
+        ...(this.opts.smart ? { smart: this.opts.smart } : {}),
+      },
       { tenantId, cloneId, persona: clone.persona, message: input.message, history: ctx.history, memory: ctx.memory, firstTurn: ctx.history.length === 0 },
     );
 
@@ -309,8 +325,19 @@ export class CloneService {
         costUsd: result.costUsd,
         latencyMs: result.latencyMs,
         confidence: result.confidence,
-        flags: { escalate: result.escalate, reasons: result.escalationReasons, purchaseIntent: result.purchaseIntent },
+        flags: {
+          escalate: result.escalate,
+          reasons: result.escalationReasons,
+          purchaseIntent: result.purchaseIntent,
+          ...(result.classification ? { intent: result.classification.intent } : {}),
+          ...(result.searchQuery !== input.message ? { searchQuery: result.searchQuery } : {}),
+        },
       });
+      const fact = result.classification?.memoryFact;
+      if (fact && !ctx.memory.includes(fact)) {
+        // Uzoq muddatli xotira (04-hujjat §3.4): eng yangi faktlar saqlanadi.
+        await tx.query("UPDATE end_users SET memory = $2::jsonb WHERE id = $1", [ctx.endUserId, JSON.stringify([...ctx.memory, fact].slice(-MAX_MEMORY_FACTS))]);
+      }
       await tx.query(
         `INSERT INTO usage_ledger (tenant_id, day, messages, tokens_in, tokens_out, cost_usd) VALUES ($1, current_date, 1, $2, $3, $4)
          ON CONFLICT (tenant_id, day) DO UPDATE SET messages = usage_ledger.messages + 1, tokens_in = usage_ledger.tokens_in + EXCLUDED.tokens_in,
