@@ -1,3 +1,4 @@
+import { MAX_FILE_BYTES, UnsupportedFileError, fetchYouTubeTranscript, parseFile, type SpeechToText } from "@ai-clone/core";
 import { PaymentNotConfiguredError, type BillingService, type CloneService } from "@ai-clone/db";
 import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
@@ -12,6 +13,8 @@ export interface AppConfig {
   adminToken?: string;
   telegramBotToken?: string;
   publicBaseUrl?: string;
+  /** Subtitrsiz YouTube videolari uchun. */
+  stt?: SpeechToText | null;
 }
 
 type Env = { Variables: { tenantId: string } };
@@ -53,6 +56,7 @@ const schemas = {
     uri: z.string().url().optional(),
   }),
   urlSource: z.object({ url: z.string().url(), title: z.string().max(300).optional() }),
+  youtube: z.object({ url: z.string().url(), title: z.string().max(300).optional() }),
   telegram: z.object({ export: z.unknown(), ownerIds: z.array(z.string()).default([]) }),
   exemplar: z.object({ question: z.string().min(1).max(2000), answer: z.string().min(1).max(4000) }),
   chat: z.object({ externalId: z.string().min(1).max(200), message: z.string().min(1).max(4000), name: z.string().max(200).optional() }),
@@ -139,6 +143,36 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
     const { url, title } = await body(c, schemas.urlSource);
     const page = await fetchUrlText(url);
     return c.json(await svc.addSource(t(c), c.req.param("id"), { type: "url", title: title ?? page.title, text: page.text, uri: url }), 201);
+  });
+  v1.post("/clones/:id/sources/file", async (c) => {
+    await cloneOr404(c);
+    const len = Number(c.req.header("content-length") ?? 0);
+    if (len > MAX_FILE_BYTES + 64 * 1024) throw new HTTPException(413, { message: "Fayl 20 MB dan katta" });
+    const form = await c.req.parseBody();
+    const file = form.file;
+    if (!(file instanceof File)) throw new HTTPException(422, { message: "file maydoni kerak (multipart/form-data)" });
+    if (file.size > MAX_FILE_BYTES) throw new HTTPException(413, { message: "Fayl 20 MB dan katta" });
+    let doc;
+    try {
+      doc = await parseFile(file.name, file.type, new Uint8Array(await file.arrayBuffer()));
+    } catch (err) {
+      throw new HTTPException(err instanceof UnsupportedFileError ? 415 : 422, { message: (err as Error).message });
+    }
+    const title = typeof form.title === "string" && form.title.trim() ? form.title.trim() : doc.title;
+    const out = await svc.addSections(t(c), c.req.param("id"), { type: doc.type, title, sections: doc.sections });
+    return c.json({ ...out, sections: doc.sections.length }, 201);
+  });
+  v1.post("/clones/:id/sources/youtube", async (c) => {
+    await cloneOr404(c);
+    const { url, title } = await body(c, schemas.youtube);
+    let tr;
+    try {
+      tr = await fetchYouTubeTranscript(url, { stt: cfg.stt ?? null });
+    } catch (err) {
+      throw new HTTPException(422, { message: (err as Error).message });
+    }
+    const out = await svc.addSections(t(c), c.req.param("id"), { type: "youtube", title: title ?? tr.title, uri: `https://youtu.be/${tr.videoId}`, sections: tr.sections });
+    return c.json({ ...out, method: tr.method, language: tr.language ?? null }, 201);
   });
   v1.post("/clones/:id/sources/telegram", async (c) => {
     await cloneOr404(c);

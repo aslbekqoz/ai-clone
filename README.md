@@ -59,7 +59,7 @@ TELEGRAM_BOT_TOKEN=... pnpm dev:bot  # ixtiyoriy: Telegram bot
 
 ```bash
 pnpm typecheck
-TEST_DATABASE_URL=postgres://aiclone:aiclone@localhost:5432/aiclone pnpm test   # 85 test: RLS izolyatsiyasi, to'lov va ovoz oqimlari ham bor
+TEST_DATABASE_URL=postgres://aiclone:aiclone@localhost:5432/aiclone pnpm test   # 99 test: RLS izolyatsiyasi, to'lov, ovoz va fayl yuklash oqimlari ham bor
 ```
 
 ### API qisqacha
@@ -70,6 +70,7 @@ TEST_DATABASE_URL=postgres://aiclone:aiclone@localhost:5432/aiclone pnpm test   
 | POST | `/v1/clones` | Klon yaratish |
 | PATCH | `/v1/clones/:id/style` | Uslub profilini tahrirlash |
 | POST | `/v1/clones/:id/sources` · `/sources/url` · `/sources/telegram` | Bilim yuklash: matn, sayt yoki Telegram eksporti |
+| POST | `/v1/clones/:id/sources/file` (multipart) · `/sources/youtube` | PDF (iqtibos sahifa raqami bilan), DOCX, TXT/MD; YouTube (iqtibos videoning aniq daqiqasiga havola bilan) |
 | POST | `/v1/clones/:id/exemplars` | Uslub namunasi qo'shish |
 | POST | `/v1/clones/:id/chat` | Klon bilan suhbat |
 | GET | `/v1/clones/:id/conversations?filter=escalated` · `/leads?format=csv` · `/stats` | Inbox, lidlar, statistika |
@@ -97,9 +98,10 @@ Tarif obunalari so'mda: Creator 189 000, Pro 499 000, Business 1 490 000 so'm. Y
 
 Barcha `/v1` so'rovlari `Authorization: Bearer <api kalit>` sarlavhasini talab qiladi.
 
+> YouTube: avval subtitrlar olinadi (o'zbek → rus → ingliz). Subtitr bo'lmasa yoki YouTube server so'rovini bloklasa, audio STT orqali matnga aylantiriladi (`ELEVENLABS_API_KEY`). Skanerlangan (rasm) PDF'lar uchun OCR hali yo'q.
+
 ### MVP'da hali yo'q (keyingi qadamlar)
 
-- PDF/DOCX parserlari, YouTube transkriptlari.
 - So'rovni LLM orqali qayta yozish, reranker va LLM asosidagi eskalatsiya klassifikatori. Hozircha qoidalar asosida ishlaydi.
 - Ko'p klonli Telegram webhook marshrutlash. Hozir bitta bot bitta klonga xizmat qiladi.
 

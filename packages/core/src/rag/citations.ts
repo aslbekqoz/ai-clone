@@ -26,7 +26,7 @@ export function resolveCitations(text: string, sources: SearchHit[]): { text: st
           return false;
         }
         if (!used.has(id)) {
-          used.set(id, { id, chunkId: src.chunkId, title: src.title, ...(src.locator.url ? { url: src.locator.url } : {}) });
+          used.set(id, { id, chunkId: src.chunkId, title: citationTitle(src), ...(src.locator.url ? { url: src.locator.url } : {}) });
         }
         return true;
       });
@@ -41,4 +41,17 @@ export function resolveCitations(text: string, sources: SearchHit[]): { text: st
 /** Foydalanuvchiga ko'rsatishdan oldin [S1] belgilarini olib tashlash (manbalar alohida ko'rsatiladi). */
 export function stripCitationMarkers(text: string): string {
   return text.replace(/\s*\[S\d+(?:\s*,\s*S\d+)*\]/g, "").trim();
+}
+
+/** "Kitob nomi, 12-bet" yoki "Video nomi, 03:25" — foydalanuvchi manbaning aniq joyini ko'radi. */
+export function citationTitle(src: Pick<SearchHit, "title" | "locator">): string {
+  if (src.locator.page !== undefined) return `${src.title}, ${src.locator.page}-bet`;
+  if (src.locator.ts !== undefined) {
+    const t = src.locator.ts;
+    const h = Math.floor(t / 3600);
+    const mm = String(Math.floor(t / 60) % 60).padStart(2, "0");
+    const ss = String(t % 60).padStart(2, "0");
+    return `${src.title}, ${h ? `${h}:${mm}` : mm}:${ss}`;
+  }
+  return src.title;
 }

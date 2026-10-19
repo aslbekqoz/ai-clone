@@ -14,6 +14,7 @@ import {
   type Embedder,
   type LLMRouter,
   type Locator,
+  type Section,
   type StyleProfile,
 } from "@ai-clone/core";
 import { FREE_PLAN } from "./billing.js";
@@ -184,13 +185,32 @@ export class CloneService {
 
   /** Matnni bo'laklaydi, normallashtiradi, embedding qiladi. Bir xil kontent ikki marta yuklanmaydi. */
   async addSource(tenantId: string, cloneId: string, input: AddSourceInput): Promise<{ sourceId: string; chunks: number; duplicate: boolean }> {
-    const hash = createHash("sha256").update(input.text).digest("hex");
-    const pieces = chunkText(input.text);
-    const prepared = pieces.map((p) => {
-      const lang = detectLang(p.text);
-      return { ...p, lang, norm: normalizeForSearch(p.text, lang) };
+    return this.addSections(tenantId, cloneId, {
+      type: input.type,
+      title: input.title,
+      ...(input.uri ? { uri: input.uri } : {}),
+      sections: [{ text: input.text, locator: { ...input.locator, ...(input.uri ? { url: input.uri } : {}) } }],
     });
-    const embeddings = prepared.length ? await this.embedder.embed(prepared.map((p) => p.norm), "doc") : [];
+  }
+
+  /**
+   * Bo'limlarga ajratilgan manba (PDF sahifalari, YouTube daqiqalari): har bir bo'lim alohida
+   * bo'laklanadi va o'z locator'ini saqlaydi — iqtibos aniq sahifa yoki daqiqaga olib boradi.
+   */
+  async addSections(
+    tenantId: string,
+    cloneId: string,
+    input: { type: AddSourceInput["type"]; title: string; uri?: string; sections: Section[] },
+  ): Promise<{ sourceId: string; chunks: number; duplicate: boolean }> {
+    const hash = createHash("sha256").update(input.sections.map((s) => s.text).join("\u0000")).digest("hex");
+    const prepared = input.sections.flatMap((section) =>
+      chunkText(section.text).map((p) => {
+        const lang = detectLang(p.text);
+        return { text: p.text, lang, norm: normalizeForSearch(p.text, lang), locator: section.locator };
+      }),
+    );
+    if (!prepared.length) throw new Error("Manbada matn yo'q");
+    const embeddings = await this.embedder.embed(prepared.map((p) => p.norm), "doc");
 
     return withTenant(this.db, tenantId, async (tx) => {
       const existing = await tx.query<{ id: string }>("SELECT id FROM sources WHERE clone_id = $1 AND content_hash = $2", [cloneId, hash]);
@@ -205,7 +225,7 @@ export class CloneService {
         await tx.query(
           `INSERT INTO chunks (tenant_id, clone_id, source_id, ord, title, text_original, text_norm, lang, locator, embedding, embedding_model)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::vector, $11)`,
-          [tenantId, cloneId, sourceId, p.ord, input.title, p.text, p.norm, p.lang, { ...input.locator, ...(input.uri ? { url: input.uri } : {}) }, toVector(embeddings[i]!), this.embedder.model],
+          [tenantId, cloneId, sourceId, i, input.title, p.text, p.norm, p.lang, p.locator, toVector(embeddings[i]!), this.embedder.model],
         );
       }
       return { sourceId, chunks: prepared.length, duplicate: false };

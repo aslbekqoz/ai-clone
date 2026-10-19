@@ -1,5 +1,8 @@
 import { HashingEmbedder, LLMRouter, MockProvider, mockPolicy } from "@ai-clone/core";
 import { BillingService, CloneService, createPool, migrate, type Db } from "@ai-clone/db";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
 import { htmlToText } from "../src/fetch-url.js";
@@ -155,6 +158,23 @@ describe.skipIf(!url)("HTTP API (Postgres)", () => {
 
     const click = await app.request("/payments/click/prepare", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: "click_trans_id=1&merchant_trans_id=2" });
     expect(await click.json()).toMatchObject({ error: -8 });
+  });
+
+  it("fayl yuklash: PDF sahifa iqtibosi bilan, noto'g'ri format 415", async () => {
+    const pdf = await readFile(path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../packages/core/test/fixtures/kurs.pdf"));
+    const fd = new FormData();
+    fd.append("file", new File([pdf], "IELTS qo'llanma.pdf", { type: "application/pdf" }));
+    const r = await app.request(`/v1/clones/${cloneId}/sources/file`, { method: "POST", headers: { authorization: `Bearer ${apiKey}` }, body: fd });
+    expect(r.status).toBe(201);
+    expect(await r.json()).toMatchObject({ chunks: 2, sections: 2, duplicate: false });
+
+    const chat = (await (await call(`/v1/clones/${cloneId}/chat`, { method: "POST", key: apiKey, body: JSON.stringify({ externalId: "pdf-user", message: "Speaking bo'limida eng muhimi nima?" }) })).json()) as { citations: { title: string }[] };
+    expect(chat.citations[0]?.title).toBe("IELTS qo'llanma, 2-bet");
+
+    const bad = new FormData();
+    bad.append("file", new File([new Uint8Array([1])], "rasm.png", { type: "image/png" }));
+    expect((await app.request(`/v1/clones/${cloneId}/sources/file`, { method: "POST", headers: { authorization: `Bearer ${apiKey}` }, body: bad })).status).toBe(415);
+    expect((await call(`/v1/clones/${cloneId}/sources/youtube`, { method: "POST", key: apiKey, body: JSON.stringify({ url: "https://example.com/x" }) })).status).toBe(422);
   });
 
   it("vidjet skripti va klon sahifasi", async () => {

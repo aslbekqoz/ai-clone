@@ -151,11 +151,17 @@ async function viewKnowledge(view){const table=h("tbody");
   const added=(r)=>{toast(r.duplicate?"Bu manba allaqachon bor":"Qo'shildi: "+(r.chunks??r.posts??0)+" bo'lak");load();};
   const t={title:h("input",{required:true,placeholder:"Kurs narxlari"}),text:h("textarea",{required:true,placeholder:"Matnni shu yerga qo'ying"})};
   const u={url:h("input",{type:"url",required:true,placeholder:"https://…"})};
+  const fl={file:h("input",{type:"file",accept:".pdf,.docx,.txt,.md",required:true})};
+  const yt={url:h("input",{type:"url",required:true,placeholder:"https://youtu.be/…"})};
   const tg={file:h("input",{type:"file",accept:".json,application/json",required:true}),owners:h("input",{placeholder:"user123456 (ixtiyoriy)"})};
   const ex={q:h("input",{required:true,placeholder:"Kurs qachon boshlanadi?"}),a:h("textarea",{required:true,placeholder:"O'zingizning uslubingizdagi javob",style:"min-height:70px"})};
   view.append(h("div",{class:"grid"},
     h("form",{class:"card",onsubmit:guard(async()=>{added(await post("/v1/clones/"+clone.id+"/sources",{title:t.title.value,text:t.text.value}));t.title.value="";t.text.value="";})},h("h3",{},"Matn"),h("label",{},"Sarlavha"),t.title,h("label",{},"Matn"),t.text,h("div",{style:"margin-top:12px"},h("button",{type:"submit"},"Qo'shish"))),
     h("div",{style:"display:flex;flex-direction:column;gap:16px"},
+      h("form",{class:"card",onsubmit:guard(async()=>{const fd=new FormData();fd.append("file",fl.file.files[0]);const r=await api("/v1/clones/"+clone.id+"/sources/file",{method:"POST",body:fd});fl.file.value="";
+          toast(r.duplicate?"Bu fayl allaqachon bor":"Qo'shildi: "+r.chunks+" bo'lak");load();})},h("h3",{},"Fayl"),h("p",{class:"small muted"},"PDF, DOCX, TXT yoki MD — 20 MB gacha. PDF'da iqtibos sahifa raqami bilan."),fl.file,h("div",{style:"margin-top:12px"},h("button",{type:"submit"},"Yuklash"))),
+      h("form",{class:"card",onsubmit:guard(async()=>{toast("Video transkripti olinmoqda…");const r=await post("/v1/clones/"+clone.id+"/sources/youtube",{url:yt.url.value});yt.url.value="";
+          toast(r.duplicate?"Bu video allaqachon bor":"Qo'shildi: "+r.chunks+" bo'lak ("+(r.method==="captions"?"subtitrlardan":"audio orqali")+")");load();})},h("h3",{},"YouTube video"),h("p",{class:"small muted"},"Subtitrlardan olinadi; iqtibos videoning aniq daqiqasiga olib boradi."),yt.url,h("div",{style:"margin-top:12px"},h("button",{type:"submit"},"Yuklash"))),
       h("form",{class:"card",onsubmit:guard(async()=>{added(await post("/v1/clones/"+clone.id+"/sources/url",{url:u.url.value}));u.url.value="";})},h("h3",{},"Sayt sahifasi"),h("label",{},"Havola"),u.url,h("div",{style:"margin-top:12px"},h("button",{type:"submit"},"Yuklash"))),
       h("form",{class:"card",onsubmit:guard(async()=>{const json=JSON.parse(await tg.file.files[0].text());const ownerIds=tg.owners.value.split(",").map(s=>s.trim()).filter(Boolean);
           const r=await post("/v1/clones/"+clone.id+"/sources/telegram",{export:json,ownerIds});toast(r.posts+" post, "+r.exemplars+" namuna qo'shildi");load();})},

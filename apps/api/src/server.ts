@@ -9,6 +9,7 @@ const app = createApp(rt.service, {
   ...(process.env.ADMIN_TOKEN ? { adminToken: process.env.ADMIN_TOKEN } : {}),
   ...(process.env.TELEGRAM_BOT_TOKEN ? { telegramBotToken: process.env.TELEGRAM_BOT_TOKEN } : {}),
   ...(process.env.PUBLIC_BASE_URL ? { publicBaseUrl: process.env.PUBLIC_BASE_URL } : {}),
+  stt: rt.stt,
 }, rt.billing);
 
 const port = Number(process.env.PORT ?? 8787);
