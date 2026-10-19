@@ -1,5 +1,6 @@
 import { HashingEmbedder, LLMRouter, MockProvider, mockPolicy } from "@ai-clone/core";
-import { BillingService, CloneService, createPool, migrate, type Db } from "@ai-clone/db";
+import { BillingService, CloneService, TelegramChannels, createPool, migrate, type Db } from "@ai-clone/db";
+import { randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -30,6 +31,21 @@ const url = process.env.TEST_DATABASE_URL;
 describe.skipIf(!url)("HTTP API (Postgres)", () => {
   let db: Db;
   let app: ReturnType<typeof createApp>;
+  // Soxta Telegram Bot API: barcha chaqiruvlar shu yerda yoziladi.
+  const tgCalls: { method: string; token: string; body: Record<string, unknown> }[] = [];
+  const tgFetch = (async (url: string | URL, init?: RequestInit) => {
+    const m = String(url).match(/\/bot([^/]+)\/(\w+)$/)!;
+    const body = init?.body ? (typeof init.body === "string" ? JSON.parse(init.body) : {}) : {};
+    tgCalls.push({ token: m[1]!, method: m[2]!, body });
+    if (m[1]!.startsWith("000000")) return new Response(JSON.stringify({ ok: false, error_code: 401, description: "Unauthorized" }), { status: 401 });
+    const result =
+      m[2] === "getMe"
+        ? { id: Number(m[1]!.split(":")[0]), is_bot: true, first_name: "Klon bot", username: `bot_${m[1]!.split(":")[0]}`, can_join_groups: false, can_read_all_group_messages: false, supports_inline_queries: false, can_connect_to_business: false, has_main_web_app: false }
+        : m[2] === "sendMessage"
+          ? { message_id: 1, date: 0, chat: { id: body.chat_id, type: "private" }, text: body.text }
+          : true;
+    return new Response(JSON.stringify({ ok: true, result }));
+  }) as unknown as typeof fetch;
   let apiKey: string;
   let otherKey: string;
   let cloneId: string;
@@ -45,7 +61,12 @@ describe.skipIf(!url)("HTTP API (Postgres)", () => {
   beforeAll(async () => {
     db = createPool(url);
     await migrate(db);
-    app = createApp(new CloneService(db, new HashingEmbedder(), new LLMRouter([new MockProvider()], mockPolicy())), { adminToken: "admin-secret" }, new BillingService(db, { payme: { merchantId: "m1", key: "pk" } }));
+    const telegram = new TelegramChannels(db, randomBytes(32), "https://api.aiclone.uz", tgFetch);
+    app = createApp(
+      new CloneService(db, new HashingEmbedder(), new LLMRouter([new MockProvider()], mockPolicy())),
+      { adminToken: "admin-secret", telegram, telegramClient: { fetch: tgFetch as never } },
+      new BillingService(db, { payme: { merchantId: "m1", key: "pk" } }),
+    );
     for (const name of ["API A", "API B"]) {
       const r = await call("/admin/tenants", { method: "POST", headers: { "x-admin-token": "admin-secret" }, body: JSON.stringify({ name, plan: "pro" }) });
       expect(r.status).toBe(201);
@@ -175,6 +196,49 @@ describe.skipIf(!url)("HTTP API (Postgres)", () => {
     bad.append("file", new File([new Uint8Array([1])], "rasm.png", { type: "image/png" }));
     expect((await app.request(`/v1/clones/${cloneId}/sources/file`, { method: "POST", headers: { authorization: `Bearer ${apiKey}` }, body: bad })).status).toBe(415);
     expect((await call(`/v1/clones/${cloneId}/sources/youtube`, { method: "POST", key: apiKey, body: JSON.stringify({ url: "https://example.com/x" }) })).status).toBe(422);
+  });
+
+  it("Telegram: bot ulash → webhook orqali suhbat → egasining javobi klon boti orqali", async () => {
+    const TOKEN = "777000111:AAEexampleexampleexampleexampleXYZ";
+    expect(await (await call(`/v1/clones/${cloneId}/telegram`, { key: apiKey })).json()).toMatchObject({ available: true, connected: false });
+    expect((await call(`/v1/clones/${cloneId}/telegram`, { method: "POST", key: apiKey, body: JSON.stringify({ token: "noto'g'ri" }) })).status).toBe(422);
+    expect((await call(`/v1/clones/${cloneId}/telegram`, { method: "POST", key: apiKey, body: JSON.stringify({ token: "bu-token-emas-umuman" }) })).status).toBe(400);
+    expect((await call(`/v1/clones/${cloneId}/telegram`, { method: "POST", key: apiKey, body: JSON.stringify({ token: "000000111:AAEexampleexampleexampleexampleXYZ" }) })).status).toBe(400);
+
+    const r = await call(`/v1/clones/${cloneId}/telegram`, { method: "POST", key: apiKey, body: JSON.stringify({ token: TOKEN }) });
+    expect(r.status).toBe(201);
+    expect(await r.json()).toEqual({ botUsername: "bot_777000111" });
+    const hook = tgCalls.find((c) => c.method === "setWebhook")!;
+    expect(hook.body.url).toMatch(/^https:\/\/api\.aiclone\.uz\/telegram\/[0-9a-f-]{36}$/);
+    const status = (await (await call(`/v1/clones/${cloneId}/telegram`, { key: apiKey })).json()) as Record<string, unknown>;
+    expect(status).toMatchObject({ connected: true, botUsername: "bot_777000111" });
+    expect(JSON.stringify(status)).not.toContain("AAEexample");
+    const stored = (await db.query("SELECT token_enc FROM telegram_bots WHERE bot_id = 777000111")).rows[0].token_enc as string;
+    expect(stored).not.toContain("AAEexample");
+
+    // Boshqa tenant xuddi shu botni ulay olmaydi
+    const otherClone = (await (await call("/v1/clones", { method: "POST", key: otherKey, body: JSON.stringify({ slug: `${slug}-b`, name: "B" }) })).json()) as { id: string };
+    expect((await call(`/v1/clones/${otherClone.id}/telegram`, { method: "POST", key: otherKey, body: JSON.stringify({ token: TOKEN }) })).status).toBe(409);
+
+    const path = new URL(String(hook.body.url)).pathname;
+    const update = { update_id: 1, message: { message_id: 5, date: 0, chat: { id: 4242, type: "private", first_name: "Vali" }, from: { id: 4242, is_bot: false, first_name: "Vali" }, text: "Speaking bo'limida eng muhimi nima?" } };
+    expect((await app.request(path, { method: "POST", headers: { "content-type": "application/json", "x-telegram-bot-api-secret-token": "xato" }, body: JSON.stringify(update) })).status).toBe(401);
+
+    const ok = await app.request(path, { method: "POST", headers: { "content-type": "application/json", "x-telegram-bot-api-secret-token": String(hook.body.secret_token) }, body: JSON.stringify(update) });
+    expect(ok.status).toBe(200);
+    const answer = tgCalls.filter((c) => c.method === "sendMessage" && c.body.chat_id === 4242).at(-1)!;
+    expect(answer.token).toBe(TOKEN);
+    expect(String(answer.body.text)).toContain("ravonlik");
+    expect(String(answer.body.text)).toContain("IELTS qo'llanma, 2-bet");
+
+    const convs = (await (await call(`/v1/clones/${cloneId}/conversations`, { key: apiKey })).json()) as { id: string; channel: string }[];
+    const conv = convs.find((c) => c.channel === "telegram")!;
+    const reply = (await (await call(`/v1/conversations/${conv.id}/reply`, { method: "POST", key: apiKey, body: JSON.stringify({ text: "Salom, Vali!" }) })).json()) as { delivered: boolean };
+    expect(reply.delivered).toBe(true);
+
+    expect(await (await call(`/v1/clones/${cloneId}/telegram`, { method: "DELETE", key: apiKey })).json()).toEqual({ ok: true });
+    expect(tgCalls.at(-1)?.method).toBe("deleteWebhook");
+    expect((await app.request(path, { method: "POST", headers: { "content-type": "application/json", "x-telegram-bot-api-secret-token": String(hook.body.secret_token) }, body: JSON.stringify(update) })).status).toBe(401);
   });
 
   it("vidjet skripti va klon sahifasi", async () => {

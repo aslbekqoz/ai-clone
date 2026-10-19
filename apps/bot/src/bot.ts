@@ -1,6 +1,6 @@
 import { stripCitationMarkers, type SpeechToText } from "@ai-clone/core";
 import type { CloneRecord, CloneService } from "@ai-clone/db";
-import { Bot, type Context } from "grammy";
+import { Bot, type ApiClientOptions, type Context } from "grammy";
 import type { UserFromGetMe } from "grammy/types";
 import { escalationNotice, parseOwnerCommand } from "./owner-commands.js";
 import { transcribeTelegramFile, VOICE_REPLIES } from "./voice.js";
@@ -14,14 +14,15 @@ export interface BotConfig {
   /** Testlar uchun: bot ma'lumoti (getMe chaqirilmaydi) va fayl yuklash funksiyasi. */
   botInfo?: UserFromGetMe;
   fetchFn?: typeof fetch;
+  client?: ApiClientOptions;
 }
 
 const CONSENT =
   "Suhbatni davom ettirish orqali xabarlaringiz javob tayyorlash uchun qayta ishlanishiga rozilik bildirasiz. Ma'lumotlaringizni o'chirish: /forget";
 
-/** Bitta klon uchun Telegram bot. Ko'p klonli webhook marshrutlash — v1 (04-hujjat §9). */
+/** Bitta klon uchun Telegram bot. Ko'p klonli rejimda webhook.ts har bir kanal uchun shu funksiyani chaqiradi. */
 export function createBot(svc: CloneService, cfg: BotConfig): Bot {
-  const bot = new Bot(cfg.token, cfg.botInfo ? { botInfo: cfg.botInfo } : {});
+  const bot = new Bot(cfg.token, { ...(cfg.botInfo ? { botInfo: cfg.botInfo } : {}), ...(cfg.client ? { client: cfg.client } : {}) });
   const { tenantId, clone } = cfg;
   const ownerChatId = clone.ownerTelegramChatId;
   const isOwner = (ctx: Context) => ownerChatId !== null && String(ctx.chat?.id) === ownerChatId;

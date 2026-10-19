@@ -50,7 +50,7 @@ docker compose up -d                 # Postgres 16 + pgvector
 cp .env.example .env && set -a && . ./.env && set +a
 pnpm seed                            # demo klon: "Dilnoza (IELTS)" + API kalit
 pnpm dev:api                         # dashboard: http://localhost:8787/app · klon: /c/dilnoza-demo
-TELEGRAM_BOT_TOKEN=... pnpm dev:bot  # ixtiyoriy: Telegram bot
+TELEGRAM_BOT_TOKEN=... pnpm dev:bot  # ixtiyoriy: bitta bot, long polling (lokal sinov)
 ```
 
 Claude ulanganda har bir xabarda qo'shimcha ikkita qadam ham ishlaydi, ikkalasi kichik modelda va parallel:
@@ -65,7 +65,7 @@ Ikkalasi ham xato bersa, tizim qoidalar asosidagi tekshiruvga qaytadi. `TEI_RERA
 
 ```bash
 pnpm typecheck
-TEST_DATABASE_URL=postgres://aiclone:aiclone@localhost:5432/aiclone pnpm test   # 113 test: RLS izolyatsiyasi, to'lov, ovoz, fayl yuklash va LLM qadamlari ham bor
+TEST_DATABASE_URL=postgres://aiclone:aiclone@localhost:5432/aiclone pnpm test   # 120 test: RLS izolyatsiyasi, to'lov, ovoz, fayl, LLM qadamlari va Telegram webhook ham bor
 ```
 
 ### API qisqacha
@@ -85,6 +85,17 @@ TEST_DATABASE_URL=postgres://aiclone:aiclone@localhost:5432/aiclone pnpm test   
 | POST/GET | `/public/:slug/chat` · `/public/:slug/updates` | Vidjet uchun ommaviy endpointlar |
 | GET/POST | `/v1/billing` · `/v1/billing/orders` | Joriy tarif va foydalanish, Payme/Click checkout havolasi |
 | POST | `/payments/payme` · `/payments/click/prepare` · `/payments/click/complete` | To'lov tizimlari webhooklari |
+| GET/POST/DELETE | `/v1/clones/:id/telegram` | Klonning o'z Telegram botini ulash yoki uzish |
+| POST | `/telegram/:id` | Telegram webhook (`X-Telegram-Bot-Api-Secret-Token` bilan) |
+
+### Telegram: ikki rejim
+
+1. **Ko'p klonli, prod uchun.** Serverda `CHANNEL_SECRET_KEY` va `PUBLIC_BASE_URL` o'rnatiladi. Har bir klon egasi dashboarddagi **Ulash** bo'limida BotFather tokenini kiritadi. Shundan keyin:
+   - token tekshiriladi (`getMe`) va AES-256-GCM bilan shifrlanib saqlanadi;
+   - webhook har bir bot uchun alohida sir bilan o'rnatiladi;
+   - barcha botlar bitta API serveri orqali ishlaydi;
+   - bitta bot faqat bitta klonga ulanadi.
+2. **Bitta bot, lokal sinov uchun.** `TELEGRAM_BOT_TOKEN` va `CLONE_SLUG` bilan `pnpm dev:bot` ishga tushiriladi. Bu rejim long polling ishlatadi.
 
 ### To'lovlar (Payme va Click)
 
@@ -106,9 +117,14 @@ Barcha `/v1` so'rovlari `Authorization: Bearer <api kalit>` sarlavhasini talab q
 
 > YouTube: avval subtitrlar olinadi (o'zbek → rus → ingliz). Subtitr bo'lmasa yoki YouTube server so'rovini bloklasa, audio STT orqali matnga aylantiriladi (`ELEVENLABS_API_KEY`). Skanerlangan (rasm) PDF'lar uchun OCR hali yo'q.
 
-### MVP'da hali yo'q (keyingi qadamlar)
+### Keyingi qadamlar (v1–v2, `docs/02-mahsulot-prd.md`)
 
-- Ko'p klonli Telegram webhook marshrutlash. Hozir bitta bot bitta klonga xizmat qiladi.
+- Instagram DM va WhatsApp Business kanallari (Meta app review talab qiladi).
+- Ovoz klonida javob berish (TTS): rozilik oqimi va biometrik ma'lumotni UZ serverida saqlash bilan.
+- Klon monetizatsiyasi: obunachilar klonga to'laydi, egasiga to'lov o'tkaziladi.
+- Skanerlangan PDF'lar uchun OCR; Telegram kanalini avtomatik sinxronlash.
+- Webhook yangilanishlarini navbat (pg-boss) orqali qayta ishlash. Hozir javob webhook so'rovi ichida tayyorlanadi.
+- Video-avatar, klonlar marketpleysi, white-label.
 
 ## Moliyaviy model
 

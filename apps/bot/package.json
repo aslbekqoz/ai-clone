@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "exports": { ".": "./src/exports.ts" },
   "dependencies": {
     "@ai-clone/core": "workspace:*",
     "@ai-clone/db": "workspace:*",

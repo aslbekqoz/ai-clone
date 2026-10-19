@@ -200,12 +200,21 @@ async function viewStats(view){const s=await api("/v1/clones/"+clone.id+"/stats"
     h("p",{class:"muted small",style:"margin-top:14px"},"Javob topilmagan savollar — bilim bazasidagi bo'shliqlar. Ularni Inbox'da \\"e'tibor\\" filtri bilan ko'ring va Bilim bo'limiga qo'shing."));}
 
 // --- Ulash ---
-async function viewConnect(view){const base=location.origin,page=base+"/c/"+clone.slug,snippet='<script src="'+base+'/widget.js" data-clone="'+clone.slug+'" async><\\/script>';
+async function viewConnect(view){const tgCard=h("div",{class:"card"}),base=location.origin,page=base+"/c/"+clone.slug,snippet='<script src="'+base+'/widget.js" data-clone="'+clone.slug+'" async><\\/script>';
   const copy=(text)=>guard(async()=>{await navigator.clipboard.writeText(text);toast("Nusxalandi");});
   view.append(h("div",{class:"grid"},
     h("div",{class:"card"},h("h3",{},"Ommaviy sahifa"),h("p",{class:"small muted"},"Telegram/Instagram bio'ga qo'ying."),h("pre",{class:"code"},page),h("div",{class:"row"},h("button",{class:"small",onclick:copy(page)},"Nusxalash"),h("a",{href:page,target:"_blank",rel:"noopener"},"Ochish →"))),
     h("div",{class:"card"},h("h3",{},"Sayt vidjeti"),h("p",{class:"small muted"},"Saytingiz </body> tegidan oldin qo'ying."),h("pre",{class:"code"},snippet),h("button",{class:"small",onclick:copy(snippet)},"Nusxalash")),
-    h("div",{class:"card"},h("h3",{},"Telegram bot"),h("p",{class:"small muted"},"BotFather'da bot yarating va tokenni serverda TELEGRAM_BOT_TOKEN, CLONE_SLUG="+clone.slug+" bilan ishga tushiring. Eskalatsiya xabarlari uchun Sozlamalar'da Telegram chat ID'ingizni kiriting."))));}
+    tgCard));
+  async function loadTg(){const st=await api("/v1/clones/"+clone.id+"/telegram");tgCard.replaceChildren(h("h3",{},"Telegram bot"));
+    if(!st.available){tgCard.append(h("p",{class:"small muted"},"Serverda ko'p klonli Telegram yoqilmagan (CHANNEL_SECRET_KEY, PUBLIC_BASE_URL). Muqobil: TELEGRAM_BOT_TOKEN va CLONE_SLUG="+clone.slug+" bilan alohida bot jarayoni."));return;}
+    if(st.connected){tgCard.append(h("p",{},"Ulangan: ",h("a",{href:"https://t.me/"+st.botUsername,target:"_blank",rel:"noopener"},"@"+st.botUsername)),
+      h("p",{class:"small muted"},"Eskalatsiya xabarlari uchun Sozlamalar'da Telegram chat ID'ingizni kiriting."),
+      h("button",{class:"ghost small",onclick:guard(async()=>{if(!confirm("Bot uzilsinmi? Foydalanuvchilar javob olmay qoladi."))return;await api("/v1/clones/"+clone.id+"/telegram",{method:"DELETE"});toast("Bot uzildi");loadTg();})},"Uzish"));return;}
+    const tok=h("input",{type:"password",placeholder:"123456789:AA…",autocomplete:"off"});
+    tgCard.append(h("p",{class:"small muted"},"@BotFather → /newbot → tokenni shu yerga qo'ying. Token shifrlangan holda saqlanadi."),
+      h("form",{onsubmit:guard(async()=>{const r=await post("/v1/clones/"+clone.id+"/telegram",{token:tok.value.trim()});toast("@"+r.botUsername+" ulandi");loadTg();})},tok,h("div",{style:"margin-top:10px"},h("button",{type:"submit"},"Ulash"))));}
+  await loadTg();}
 
 // --- Tarif ---
 const PLAN_NAMES={free:"Free",creator:"Creator",pro:"Pro",business:"Business",enterprise:"Enterprise"};

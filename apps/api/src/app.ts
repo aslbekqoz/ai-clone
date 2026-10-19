@@ -1,5 +1,8 @@
 import { MAX_FILE_BYTES, UnsupportedFileError, fetchYouTubeTranscript, parseFile, type SpeechToText } from "@ai-clone/core";
-import { PaymentNotConfiguredError, type BillingService, type CloneService } from "@ai-clone/db";
+import { createWebhookDispatcher } from "@ai-clone/bot";
+import { PaymentNotConfiguredError, TelegramConnectError, type BillingService, type CloneService, type TelegramChannels } from "@ai-clone/db";
+import type { ApiClientOptions } from "grammy";
+import type { Update } from "grammy/types";
 import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
@@ -13,8 +16,12 @@ export interface AppConfig {
   adminToken?: string;
   telegramBotToken?: string;
   publicBaseUrl?: string;
-  /** Subtitrsiz YouTube videolari uchun. */
+  /** Subtitrsiz YouTube videolari va ovozli xabarlar uchun. */
   stt?: SpeechToText | null;
+  /** Ko'p klonli Telegram (CHANNEL_SECRET_KEY + PUBLIC_BASE_URL bo'lsa). */
+  telegram?: TelegramChannels | null;
+  /** Testlar uchun: webhook botlarining Telegram API so'rovlari. */
+  telegramClient?: ApiClientOptions;
 }
 
 type Env = { Variables: { tenantId: string } };
@@ -64,6 +71,7 @@ const schemas = {
   mode: z.object({ mode: z.enum(["bot", "human", "paused"]) }),
   reply: z.object({ text: z.string().min(1).max(4000) }),
   order: z.object({ plan: z.enum(["creator", "pro", "business"]), months: z.union([z.literal(1), z.literal(3), z.literal(6), z.literal(12)]).default(1), provider: z.enum(["payme", "click"]) }),
+  telegramToken: z.object({ token: z.string().min(10).max(100) }),
   feedback: z.object({ rating: z.union([z.literal(1), z.literal(-1)]), correction: z.string().max(4000).optional() }),
 };
 
@@ -83,6 +91,7 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
   app.onError((err, c) => {
     if (err instanceof HTTPException) return c.json({ error: err.message }, err.status);
     if (err instanceof PaymentNotConfiguredError) return c.json({ error: err.message }, 503);
+    if (err instanceof TelegramConnectError) return c.json({ error: err.message }, err.status);
     if (err.message.includes("topilmadi")) return c.json({ error: err.message }, 404);
     if ((err as { code?: string }).code === "23505") return c.json({ error: "Bunday yozuv allaqachon mavjud" }, 409);
     console.error(err);
@@ -215,13 +224,11 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
     const { text } = await body(c, schemas.reply);
     const dest = await svc.ownerReply(t(c), c.req.param("id"), text);
     let delivered = false;
-    if (dest.channel === "telegram" && cfg.telegramBotToken) {
-      const res = await fetch(`https://api.telegram.org/bot${cfg.telegramBotToken}/sendMessage`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ chat_id: dest.externalId, text }),
-      });
-      delivered = res.ok;
+    if (dest.channel === "telegram") {
+      // Avval klonning o'z boti (ko'p klonli rejim), bo'lmasa global bot tokeni.
+      const own = await cfg.telegram?.resolveByClone(t(c), dest.cloneId);
+      const token = own?.token ?? cfg.telegramBotToken;
+      if (token) delivered = cfg.telegram ? await cfg.telegram.sendMessage(token, dest.externalId, text) : await sendTelegram(token, dest.externalId, text);
     }
     // Web vidjet egasining javobini /public/:slug/updates orqali oladi.
     return c.json({ ok: true, channel: dest.channel, delivered });
@@ -229,6 +236,26 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
   v1.post("/messages/:id/feedback", async (c) => {
     const f = await body(c, schemas.feedback);
     return c.json(await svc.feedback(t(c), c.req.param("id"), f.rating, f.correction));
+  });
+
+  // --- Ko'p klonli Telegram: egasi o'z bot tokenini ulaydi ---
+  const telegramOr503 = () => {
+    if (!cfg.telegram) throw new HTTPException(503, { message: "Telegram ulash sozlanmagan (CHANNEL_SECRET_KEY va PUBLIC_BASE_URL kerak)" });
+    return cfg.telegram;
+  };
+  v1.get("/clones/:id/telegram", async (c) => {
+    await cloneOr404(c);
+    const status = cfg.telegram ? await cfg.telegram.status(t(c), c.req.param("id")) : null;
+    return c.json({ available: Boolean(cfg.telegram), connected: Boolean(status), ...(status ?? {}) });
+  });
+  v1.post("/clones/:id/telegram", async (c) => {
+    await cloneOr404(c);
+    const { token } = await body(c, schemas.telegramToken);
+    return c.json(await telegramOr503().connect(t(c), c.req.param("id"), token), 201);
+  });
+  v1.delete("/clones/:id/telegram", async (c) => {
+    await cloneOr404(c);
+    return c.json({ ok: await telegramOr503().disconnect(t(c), c.req.param("id")) });
   });
 
   const billingOr503 = () => {
@@ -242,6 +269,18 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
   });
 
   app.route("/v1", v1);
+
+  // --- Telegram webhook: har bir klonning boti uchun alohida manzil va sir ---
+  const dispatch = cfg.telegram
+    ? createWebhookDispatcher(svc, cfg.telegram, { stt: cfg.stt ?? null, ...(cfg.telegramClient ? { client: cfg.telegramClient } : {}) })
+    : null;
+  app.post("/telegram/:id", async (c) => {
+    if (!dispatch) return c.json({ error: "Telegram sozlanmagan" }, 404);
+    const update = (await c.req.json().catch(() => null)) as Update | null;
+    if (!update || typeof update.update_id !== "number") return c.json({ error: "Update noto'g'ri" }, 400);
+    const ok = await dispatch(c.req.param("id"), c.req.header("x-telegram-bot-api-secret-token"), update);
+    return ok ? c.json({ ok: true }) : c.json({ error: "Ruxsat yo'q" }, 401);
+  });
 
   // --- To'lov tizimlari webhooklari (har doim HTTP 200 — protokol talabi) ---
   app.post("/payments/payme", async (c) => {
@@ -285,4 +324,19 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
   });
 
   return app;
+}
+
+/** Ko'p klonli rejim o'chiq bo'lganda global bot orqali yuborish; xato — false (xabar saqlangan). */
+async function sendTelegram(token: string, chatId: string, text: string): Promise<boolean> {
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }

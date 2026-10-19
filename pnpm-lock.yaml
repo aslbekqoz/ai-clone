@@ -23,6 +23,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@ai-clone/bot':
+        specifier: workspace:*
+        version: link:../bot
       '@ai-clone/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -32,6 +35,9 @@ importers:
       '@hono/node-server':
         specifier: ^1.19.0
         version: 1.19.17(hono@4.13.13)
+      grammy:
+        specifier: ^1.38.0
+        version: 1.46.0
       hono:
         specifier: ^4.9.0
         version: 4.13.13

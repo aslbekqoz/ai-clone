@@ -1,6 +1,8 @@
 import { AnthropicProvider, DEFAULT_POLICY, ElevenLabsStt, HashingEmbedder, LLMRouter, MockProvider, TeiEmbedder, TeiReranker, mockPolicy, type Embedder, type SpeechToText } from "@ai-clone/core";
 import { BillingService, billingConfigFromEnv } from "./billing.js";
+import { parseSecretKey } from "./crypto.js";
 import { createPool, type Db } from "./pool.js";
+import { TelegramChannels } from "./telegram-channels.js";
 import { CloneService } from "./service.js";
 
 export interface Runtime {
@@ -11,6 +13,8 @@ export interface Runtime {
   embedder: Embedder;
   /** ELEVENLABS_API_KEY bo'lsa — ovozli xabarlar va subtitrsiz YouTube videolari uchun. */
   stt: SpeechToText | null;
+  /** CHANNEL_SECRET_KEY va PUBLIC_BASE_URL bo'lsa — har bir klon o'z Telegram botini ulaydi. */
+  telegram: TelegramChannels | null;
 }
 
 /**
@@ -34,5 +38,6 @@ export function createRuntime(env: NodeJS.ProcessEnv = process.env): Runtime {
     ...(env.TEI_RERANK_URL ? { reranker: new TeiReranker(env.TEI_RERANK_URL) } : {}),
     ...(smartOn ? { smart: { classifier: true, rewrite: true } } : {}),
   });
-  return { db, service, billing: new BillingService(db, billingConfigFromEnv(env)), llm, embedder, stt };
+  const telegram = env.CHANNEL_SECRET_KEY && env.PUBLIC_BASE_URL ? new TelegramChannels(db, parseSecretKey(env.CHANNEL_SECRET_KEY), env.PUBLIC_BASE_URL) : null;
+  return { db, service, telegram, billing: new BillingService(db, billingConfigFromEnv(env)), llm, embedder, stt };
 }

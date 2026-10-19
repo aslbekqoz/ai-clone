@@ -5,7 +5,9 @@
   "type": "module",
   "dependencies": {
     "@ai-clone/core": "workspace:*",
+    "@ai-clone/bot": "workspace:*",
     "@ai-clone/db": "workspace:*",
+    "grammy": "^1.38.0",
     "@hono/node-server": "^1.19.0",
     "hono": "^4.9.0",
     "zod": "^4.1.0"
