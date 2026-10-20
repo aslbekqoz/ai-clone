@@ -75,6 +75,19 @@ docker compose -f docker-compose.prod.yml run --rm api seed   # ixtiyoriy: demo 
 - **Bitta obraz:** `docker run aiclone api | worker | migrate | seed`.
 - **Tashqi yopiq yo'llar:** `/internal/*` va `/metrics` Caddy orqali tashqaridan ochilmaydi.
 
+### Ishga tushirishdan oldingi tekshiruv
+
+```bash
+pnpm smoke                                               # lokal
+docker compose -f docker-compose.prod.yml run --rm api smoke   # serverda
+```
+
+- **Konfiguratsiya:** kuchsiz `ADMIN_TOKEN`, `http://` manzil, noto'g'ri `CHANNEL_SECRET_KEY`, yetishmayotgan Payme yoki Meta sozlamalari.
+- **Ma'lumotlar bazasi:** migratsiyalar to'liqmi, ilova roli superuser emasmi (aks holda RLS ishlamaydi).
+- **Haqiqiy kalitlar:** Claude'da har bir sozlangan model mavjudmi, ElevenLabs akkaunti va TTS modeli, D-ID kreditlari, TEI embedding o'lchami (1024), Telegram bot va serverning internetdan ochilishi.
+- **Narxi:** tekshiruvlar faqat ma'lumot o'qiydi, pullik generatsiya chaqirilmaydi.
+- **Prod'da himoya:** `NODE_ENV=production` da API xavfli konfiguratsiya bilan ishga tushmaydi. Faqat sinov uchun `STRICT_CONFIG=0` bilan chetlab o'tish mumkin.
+
 ### Monitoring
 
 - **Holat tekshiruvlari:** `/health` (jarayon tirikmi) va `/health/ready` (baza ulanadi va barcha migratsiyalar qo'llangan, aks holda 503).

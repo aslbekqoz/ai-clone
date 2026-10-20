@@ -1,7 +1,17 @@
 import { serve } from "@hono/node-server";
 import { createRuntime, migrate, readiness, systemStats } from "@ai-clone/db";
 import { createApp } from "./app.js";
+import { configChecks, formatChecks } from "./preflight.js";
 import { createAvatarRequester, createRuntimeWorker } from "./jobs.js";
+
+// Prod'da xavfli konfiguratsiya bilan ishga tushmaymiz (sukut ADMIN_TOKEN, http:// manzil va h.k.). STRICT_CONFIG=0 — chetlab o'tish.
+if (process.env.NODE_ENV === "production" && process.env.STRICT_CONFIG !== "0") {
+  const bad = configChecks(process.env).filter((r) => r.status === "fail");
+  if (bad.length) {
+    console.error(`Konfiguratsiya xatolari:\n${formatChecks(bad)}\nTo'liq tekshiruv: pnpm smoke`);
+    process.exit(1);
+  }
+}
 
 const rt = createRuntime();
 await migrate(rt.db);

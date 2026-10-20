@@ -10,6 +10,7 @@
     "dev:api": "tsx watch apps/api/src/server.ts",
     "dev:bot": "tsx watch apps/bot/src/index.ts",
     "worker": "tsx apps/api/src/worker.ts",
+    "smoke": "tsx apps/api/src/smoke.ts",
     "seed": "tsx apps/api/src/seed.ts"
   },
   "devDependencies": {
