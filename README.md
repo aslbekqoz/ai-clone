@@ -29,6 +29,7 @@
 | 09 | [Xavflar va huquq](docs/09-xavflar-va-huquq.md) | Xavflar matritsasi, huquqiy nazorat ro'yxati, etika tamoyillari |
 | 10 | [Pitch deck](docs/10-pitch-deck.md) | 12 slayd matni va investor savollariga javoblar |
 | 11 | [Jamoa va investitsiya](docs/11-jamoa-va-investitsiya.md) | Jamoa rejasi, raundlar, investorlar, data room |
+| 12 | [Ishga tushirish (runbook)](docs/12-ishga-tushirish-runbook.md) | Deploy, yangilash, zaxira va tiklash, ogohlantirishlar, hodisalar |
 
 ## Kod: MVP (ishlaydigan birinchi versiya)
 
@@ -88,6 +89,13 @@ docker compose -f docker-compose.prod.yml run --rm api smoke   # serverda
 - **Narxi:** tekshiruvlar faqat ma'lumot o'qiydi, pullik generatsiya chaqirilmaydi.
 - **Prod'da himoya:** `NODE_ENV=production` da API xavfli konfiguratsiya bilan ishga tushmaydi. Faqat sinov uchun `STRICT_CONFIG=0` bilan chetlab o'tish mumkin.
 
+### Xavfsizlik
+
+- **Ma'lumotlar izolyatsiyasi:** har bir jadvalda RLS; ilova roli superuser emas (CI bunga alohida testlarni ishlatadi). Biometrik ustunlarni (ovoz, surat) ilova roli o'qiy olmaydi.
+- **Kalitlar:** API kalitni terib topishga qarshi IP bo'yicha cheklov bor (daqiqasiga 20 ta xato urinish), admin token vaqtga chidamli (timing-safe) taqqoslanadi. Sizib chiqqan kalit dashboard'dan yoki `POST /v1/api-key/rotate` bilan almashtiriladi.
+- **Xavfsizlik sarlavhalari:** HSTS, `nosniff`, `X-Frame-Options: DENY`; mikrofon faqat o'z domenida. So'rov hajmi cheklangan: fayllar 20 MB, ommaviy endpointlar 64 KB.
+- **Ekspluatatsiya:** deploy, yangilash, zaxira va hodisalar bo'yicha qo'llanma [12-hujjat](docs/12-ishga-tushirish-runbook.md)da.
+
 ### Monitoring
 
 - **Holat tekshiruvlari:** `/health` (jarayon tirikmi) va `/health/ready` (baza ulanadi va barcha migratsiyalar qo'llangan, aks holda 503).
@@ -99,7 +107,7 @@ docker compose -f docker-compose.prod.yml run --rm api smoke   # serverda
 
 ```bash
 pnpm typecheck
-TEST_DATABASE_URL=postgres://aiclone:aiclone@localhost:5432/aiclone pnpm test   # 183 test: RLS, navbat, katalog, to'lovlar, monetizatsiya, ovoz, fayl, LLM qadamlari, Telegram, Instagram, WhatsApp
+TEST_DATABASE_URL=postgres://aiclone:aiclone@localhost:5432/aiclone pnpm test   # 192 test: RLS, navbat, katalog, to'lovlar, monetizatsiya, ovoz, fayl, LLM qadamlari, Telegram, Instagram, WhatsApp
 ```
 
 > Prod'dagi kabi superuser bo'lmagan ega bilan tekshirish: bazani oddiy rol (`CREATEROLE`) egaligida yarating, kengaytmalarni (`vector`, `pg_trgm`, `pgcrypto`) admin o'rnatadi, keyin shu rol bilan `TEST_DATABASE_URL` ni ishga tushiring. Docker'dagi `aiclone` superuser bo'lgani uchun RLS xatolarini yashirishi mumkin.

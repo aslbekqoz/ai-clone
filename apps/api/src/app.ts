@@ -41,7 +41,10 @@ import { processMetaInbound } from "./meta-webhook.js";
 import type { ApiClientOptions } from "grammy";
 import type { Update } from "grammy/types";
 import { Hono, type Context } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
+import { secureHeaders } from "hono/secure-headers";
+import { timingSafeEqual } from "node:crypto";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { fetchUrlText } from "./fetch-url.js";
@@ -182,7 +185,39 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
   const app = new Hono<Env>();
   const metrics = new Metrics();
   app.use("*", observe(metrics, { logRequests: cfg.ops?.logRequests ?? false }));
+  // Vidjet skripti va videolar boshqa saytlardan yuklanadi — CORP/COEP o'chiq. Mikrofon: dashboard'da ovoz roziligi.
+  app.use(
+    "*",
+    secureHeaders({
+      crossOriginResourcePolicy: false,
+      crossOriginEmbedderPolicy: false,
+      referrerPolicy: "strict-origin-when-cross-origin",
+      // Saytga joylash — vidjet skripti orqali; sahifalarni iframe ichida ochish (clickjacking) yopiq.
+      xFrameOptions: "DENY",
+      strictTransportSecurity: cfg.publicBaseUrl?.startsWith("https://") ? "max-age=31536000; includeSubDomains" : false,
+      permissionsPolicy: { camera: [], geolocation: [], microphone: ["self"] },
+    }),
+  );
+  // So'rov hajmi: fayllar (20 MB) faqat tenant API'da; ommaviy va webhook yo'llari kichik.
+  const tooLarge = (c: Context) => c.json({ error: "So'rov hajmi juda katta" }, 413);
+  app.use("/v1/*", bodyLimit({ maxSize: 21 * 1024 * 1024, onError: tooLarge }));
+  app.use("/public/*", bodyLimit({ maxSize: 64 * 1024, onError: tooLarge }));
+  app.use("/admin/*", bodyLimit({ maxSize: 64 * 1024, onError: tooLarge }));
+  for (const p of ["/telegram/*", "/meta/*", "/payments/*"]) app.use(p, bodyLimit({ maxSize: 1024 * 1024, onError: tooLarge }));
   const publicLimiter = new RateLimiter(20, 60_000);
+  // API kalit yoki admin tokenni terib topishga urinish: IP bo'yicha 20 ta xato/daqiqa.
+  const authFailures = new RateLimiter(20, 60_000);
+  const clientIp = (c: Context) => c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
+  const requireAdmin = (c: Context) => {
+    const ip = clientIp(c);
+    if (authFailures.blocked(ip)) throw new HTTPException(429, { message: "Juda ko'p muvaffaqiyatsiz urinish, birozdan keyin qayta urinib ko'ring" });
+    const given = Buffer.from(c.req.header("x-admin-token") ?? "");
+    const expected = Buffer.from(cfg.adminToken ?? "");
+    if (!cfg.adminToken || given.length !== expected.length || !timingSafeEqual(given, expected)) {
+      authFailures.allow(ip);
+      throw new HTTPException(401, { message: "Admin token noto'g'ri" });
+    }
+  };
 
   app.onError((err, c) => {
     if (err instanceof HTTPException) return c.json({ error: err.message }, err.status);
@@ -251,13 +286,20 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
 
   // --- Admin: tenant yaratish (keyin onboarding UI bilan almashtiriladi) ---
   app.post("/admin/tenants", async (c) => {
-    if (!cfg.adminToken || c.req.header("x-admin-token") !== cfg.adminToken) throw new HTTPException(401, { message: "Admin token noto'g'ri" });
+    requireAdmin(c);
     const { name, plan } = await body(c, schemas.tenant);
     return c.json(await svc.createTenant(name, plan), 201);
   });
 
+  app.post("/admin/tenants/:id/rotate-key", async (c) => {
+    requireAdmin(c);
+    const out = await svc.rotateApiKey(c.req.param("id"));
+    if (!out) throw new HTTPException(404, { message: "Tenant topilmadi" });
+    return c.json(out);
+  });
+
   app.post("/admin/payouts", async (c) => {
-    if (!cfg.adminToken || c.req.header("x-admin-token") !== cfg.adminToken) throw new HTTPException(401, { message: "Admin token noto'g'ri" });
+    requireAdmin(c);
     if (!cfg.monetization) throw new HTTPException(503, { message: "Monetizatsiya yoqilmagan" });
     const p = await body(c, schemas.payout);
     await cfg.monetization.recordPayout(p.tenantId, p.amountUzs, p.reference);
@@ -269,11 +311,11 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
     return cfg.marketplace;
   };
   app.get("/admin/reports", async (c) => {
-    if (!cfg.adminToken || c.req.header("x-admin-token") !== cfg.adminToken) throw new HTTPException(401, { message: "Admin token noto'g'ri" });
+    requireAdmin(c);
     return c.json(await marketplaceOr503().openReports());
   });
   app.post("/admin/clones/:id/moderation", async (c) => {
-    if (!cfg.adminToken || c.req.header("x-admin-token") !== cfg.adminToken) throw new HTTPException(401, { message: "Admin token noto'g'ri" });
+    requireAdmin(c);
     const m = await body(c, schemas.moderation);
     if (!(await marketplaceOr503().moderate(c.req.param("id"), m.status, m.reason))) throw new HTTPException(404, { message: "Klon topilmadi" });
     return c.json({ ok: true });
@@ -282,9 +324,14 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
   // --- Tenant API (Authorization: Bearer <api key>) ---
   const v1 = new Hono<Env>();
   v1.use("*", async (c, next) => {
+    const ip = clientIp(c);
+    if (authFailures.blocked(ip)) throw new HTTPException(429, { message: "Juda ko'p muvaffaqiyatsiz urinish, birozdan keyin qayta urinib ko'ring" });
     const key = c.req.header("authorization")?.replace(/^Bearer\s+/i, "");
     const tenantId = key ? await svc.authenticate(key) : null;
-    if (!tenantId) throw new HTTPException(401, { message: "API kalit noto'g'ri yoki yo'q" });
+    if (!tenantId) {
+      authFailures.allow(ip);
+      throw new HTTPException(401, { message: "API kalit noto'g'ri yoki yo'q" });
+    }
     c.set("tenantId", tenantId);
     await next();
   });
@@ -296,6 +343,7 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
     return clone;
   };
 
+  v1.post("/api-key/rotate", async (c) => c.json(await svc.rotateApiKey(t(c))));
   v1.get("/clones", async (c) => c.json(await svc.listClones(t(c))));
   v1.post("/clones", async (c) => c.json(await svc.createClone(t(c), await body(c, schemas.clone)), 201));
   v1.get("/clones/:id", async (c) => c.json(await cloneOr404(c)));

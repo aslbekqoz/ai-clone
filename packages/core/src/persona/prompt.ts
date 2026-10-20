@@ -115,6 +115,15 @@ function escapeAttr(v: string): string {
 }
 
 /** Bilim bazasida javob bo'lmaganda persona uslubidagi rad javobi (LLM chaqirilmaydi). */
+/** LLM provayderlari ishlamay qolganda: savol yo'qolmaydi, egasiga yetkaziladi. */
+export function unavailableReply(p: ClonePersona, lang: string): string {
+  const name = p.name;
+  if (lang === "ru") return `Сейчас не могу ответить по техническим причинам. Я передал(а) ваш вопрос ${name} — ответ придёт сюда.`;
+  if (lang === "en") return `I can't answer right now due to a technical issue. I've passed your question to ${name} — the reply will come here.`;
+  if (lang === "uz-cyrl") return `Ҳозир техник сабаб билан жавоб бера олмаяпман. Саволингизни ${name}га етказдим — жавоб шу ерга келади.`;
+  return `Hozir texnik sabab bilan javob bera olmayapman. Savolingizni ${name}ga yetkazdim — javob shu yerga keladi.`;
+}
+
 export function unanswerableReply(p: ClonePersona, lang: string): string {
   const name = p.name;
   if (lang === "ru") return `Об этом я пока не рассказывал(а). Хотите, передам ваш вопрос ${name} лично?`;

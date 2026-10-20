@@ -34,6 +34,16 @@ describe("handleTurn", () => {
     expect(r.reply).toContain("[S1]");
   });
 
+  it("barcha modellar ishlamasa: xato emas, odob bilan javob va egasiga eskalatsiya", async () => {
+    const down: LLMProvider = { id: "mock", generate: async () => { throw new Error("529 overloaded"); } };
+    const { store, embedder } = await seedStore();
+    const errors: string[] = [];
+    const r = await handleTurn({ store, embedder, router: new LLMRouter([down], mockPolicy()), onStepError: (step) => errors.push(step) }, input("IELTS kursi qancha turadi?"));
+    expect(r.reply).toBe("Hozir texnik sabab bilan javob bera olmayapman. Savolingizni Dilnozaga yetkazdim — javob shu yerga keladi.");
+    expect(r).toMatchObject({ source: "unanswerable", escalate: true, escalationReasons: ["llm_unavailable"] });
+    expect(errors).toEqual(["answer"]);
+  });
+
   it("birinchi javobga AI oshkoraligini qo'shadi", async () => {
     const { deps } = await setup();
     const r = await handleTurn(deps, input("IELTS kursi qancha turadi?", true));

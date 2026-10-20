@@ -348,7 +348,13 @@ async function viewSettings(view){const p=clone.persona;
     h("label",{},"Kategoriya"),cat,h("label",{},"Qisqa tavsif"),tag,
     h("label",{class:"row",style:"color:var(--ink)"},listed,"Katalogda ko'rsatish"),
     h("div",{style:"margin-top:14px"},h("button",{type:"submit"},"Saqlash"))));
-  await whiteLabelCard(view);}
+  await whiteLabelCard(view);
+  const keyBox=h("div",{});
+  view.append(h("div",{class:"card",style:"max-width:640px;margin-top:16px"},h("h3",{},"API kalit"),
+    h("p",{class:"small muted"},"Kalit begona qo'lga o'tgan bo'lsa, almashtiring: eskisi darhol ishlamay qoladi (vidjet va klon sahifasiga ta'sir qilmaydi)."),
+    h("button",{class:"ghost",onclick:guard(async()=>{if(!confirm("API kalit almashtirilsinmi? Eski kalit bilan ulangan integratsiyalar to'xtaydi."))return;
+      const r=await post("/v1/api-key/rotate",{});apiKey=r.apiKey;store.set(KEY,apiKey);
+      keyBox.replaceChildren(h("p",{class:"small"},"Yangi kalit (faqat hozir ko'rsatiladi, saqlab qo'ying):"),h("input",{value:r.apiKey,readonly:true,onclick:(e)=>e.target.select()}));toast("Kalit almashtirildi");})},"Kalitni almashtirish"),keyBox));}
 
 async function whiteLabelCard(view){let w;try{w=await api("/v1/clones/"+clone.id+"/white-label");}catch{return;}
   const card=h("div",{class:"card",style:"max-width:640px;margin-top:16px"},h("h3",{},"White-label"));view.append(card);

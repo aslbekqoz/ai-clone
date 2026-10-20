@@ -4,7 +4,7 @@ import { detectSignals, selfHarmReply, type EscalationReason } from "../guardrai
 import { PiiMasker } from "../guardrails/pii.js";
 import type { LLMRouter } from "../llm/router.js";
 import type { ChatTurn, Purpose, Usage } from "../llm/types.js";
-import { buildContext, buildSystemPrompt, unanswerableReply, type ClonePersona } from "../persona/prompt.js";
+import { buildContext, buildSystemPrompt, unanswerableReply, unavailableReply, type ClonePersona } from "../persona/prompt.js";
 import { resolveCitations, type Citation } from "../rag/citations.js";
 import { retrieve, type Reranker } from "../rag/retrieve.js";
 import { needsRewrite, rewriteQuery } from "../rag/rewrite.js";
@@ -23,7 +23,7 @@ export interface TurnDeps {
   /** Kichik modeldagi qo'shimcha qadamlar (har biri xato bersa, qoidalarga qaytiladi). */
   smart?: { classifier?: boolean; rewrite?: boolean };
   /** Kuzatuv uchun: qo'shimcha qadam xatolari (default: console.warn). */
-  onStepError?: (step: "classify" | "rewrite" | "rerank", err: unknown) => void;
+  onStepError?: (step: "classify" | "rewrite" | "rerank" | "answer", err: unknown) => void;
 }
 
 export interface TurnInput {
@@ -117,14 +117,31 @@ export async function handleTurn(deps: TurnDeps, input: TurnInput): Promise<Turn
 
   // Sotuv va uzun savollar o'rta modelga, qolganlari kichik modelga (marja uchun asosiy richag).
   const purpose: Purpose = base.purchaseIntent || input.message.length > 400 ? "answer_complex" : "answer";
-  const result = await deps.router.generate({
-    system: buildSystemPrompt(input.persona),
-    context: buildContext({ sources: retrieval.hits, exemplars, verified: retrieval.verified, memory: input.memory ?? [] }),
-    messages,
-    maxTokens: 1024,
-    effort: "low",
-    metadata: { tenantId: input.tenantId, cloneId: input.cloneId, purpose, ...(input.traceId ? { traceId: input.traceId } : {}) },
-  });
+  let result;
+  try {
+    result = await deps.router.generate({
+      system: buildSystemPrompt(input.persona),
+      context: buildContext({ sources: retrieval.hits, exemplars, verified: retrieval.verified, memory: input.memory ?? [] }),
+      messages,
+      maxTokens: 1024,
+      effort: "low",
+      metadata: { tenantId: input.tenantId, cloneId: input.cloneId, purpose, ...(input.traceId ? { traceId: input.traceId } : {}) },
+    });
+  } catch (err) {
+    // Barcha provayderlar (zaxira bilan) ishlamadi: foydalanuvchi xato emas, odob bilan javob oladi, suhbat egasiga o'tadi.
+    onStepError("answer", err);
+    return {
+      ...base,
+      ...extra,
+      reply: withDisclosure(unavailableReply(input.persona, lang)),
+      source: "unanswerable",
+      escalate: true,
+      escalationReasons: [...new Set([...base.escalationReasons, "llm_unavailable" as const])],
+      confidence: retrieval.confidence,
+      costUsd: extraCost,
+      latencyMs: Date.now() - started,
+    };
+  }
 
   const { text, citations } = resolveCitations(masker.unmask(result.text), retrieval.hits);
   extraCost += result.costUsd;

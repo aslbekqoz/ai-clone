@@ -1,6 +1,6 @@
 import { normalizeForSearch } from "../text/normalize.js";
 
-export type EscalationReason = "human_requested" | "purchase_intent" | "complaint" | "sensitive_topic" | "self_harm";
+export type EscalationReason = "human_requested" | "purchase_intent" | "complaint" | "sensitive_topic" | "self_harm" | "llm_unavailable";
 
 export interface Signals {
   escalate: boolean;
@@ -12,7 +12,9 @@ export interface Signals {
 
 // Kalit iboralar normallashtirilgan (kichik harf, lotin) shaklda. MVP uchun qoida asosida;
 // v1 da arzon modeldagi strukturali klassifikator bilan to'ldiriladi (04-hujjat §3.3).
-const PATTERNS: Record<EscalationReason, RegExp[]> = {
+/** Matndan aniqlanadigan sabablar (llm_unavailable — tizim holati, matn emas). */
+type TextReason = Exclude<EscalationReason, "llm_unavailable">;
+const PATTERNS: Record<TextReason, RegExp[]> = {
   human_requested: [
     /\b(odam|inson|operator|admin|o'zingiz|o'zi bilan|jonli)\b.*\b(gaplash|bog'lan|yoz|kerak)/,
     /(человек|оператор|живой|администратор|менеджер)/,
@@ -34,7 +36,7 @@ const PATTERNS: Record<EscalationReason, RegExp[]> = {
 
 export function detectSignals(message: string, lang?: string): Signals {
   const text = normalizeForSearch(message, lang);
-  const reasons = (Object.keys(PATTERNS) as EscalationReason[]).filter((r) => PATTERNS[r].some((re) => re.test(text)));
+  const reasons: EscalationReason[] = (Object.keys(PATTERNS) as TextReason[]).filter((r) => PATTERNS[r].some((re) => re.test(text)));
   return {
     escalate: reasons.some((r) => r !== "purchase_intent"),
     reasons,

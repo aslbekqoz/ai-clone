@@ -34,6 +34,7 @@ export function escalationNotice(opts: { conversationId: string; userName: strin
     sensitive_topic: "nozik mavzu",
     self_harm: "⚠️ xavfli holat",
     unanswerable: "klon javob topa olmadi",
+    llm_unavailable: "⚠️ AI vaqtincha ishlamayapti — javobni siz bering",
     human_mode: "suhbat sizning qo'lingizda",
   };
   const why = (opts.reasons.length ? opts.reasons : ["unanswerable"]).map((r) => reasons[r] ?? r).join(", ");

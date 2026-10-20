@@ -117,6 +117,15 @@ export class CloneService {
     return { tenantId: rows[0]!.id, apiKey };
   }
 
+  /** Kalit sizib chiqsa: yangisi beriladi, eskisi darhol ishlamay qoladi. */
+  async rotateApiKey(tenantId: string): Promise<{ apiKey: string } | null> {
+    const apiKey = `ac_${randomBytes(24).toString("base64url")}`;
+    const r = await this.db.query("UPDATE tenants SET api_key_hash = $2 WHERE id = $1", [tenantId, hashApiKey(apiKey)]);
+    if (!r.rowCount) return null;
+    await this.db.query("INSERT INTO audit_log (tenant_id, actor, action, target) VALUES ($1, 'owner', 'api_key.rotate', $2)", [tenantId, tenantId]);
+    return { apiKey };
+  }
+
   async authenticate(apiKey: string): Promise<string | null> {
     const { rows } = await this.db.query<{ id: string }>("SELECT id FROM tenants WHERE api_key_hash = $1", [hashApiKey(apiKey)]);
     return rows[0]?.id ?? null;

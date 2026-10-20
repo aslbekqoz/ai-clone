@@ -7,6 +7,11 @@ export class RateLimiter {
     private readonly windowMs: number,
   ) {}
 
+  /** Hisobga qo'shmasdan: limit to'lganmi (muvaffaqiyatsiz urinishlarni oldindan to'sish uchun). */
+  blocked(key: string, now = Date.now()): boolean {
+    return (this.hits.get(key) ?? []).filter((t) => now - t < this.windowMs).length >= this.max;
+  }
+
   allow(key: string, now = Date.now()): boolean {
     const recent = (this.hits.get(key) ?? []).filter((t) => now - t < this.windowMs);
     if (recent.length >= this.max) {
