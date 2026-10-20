@@ -13,6 +13,12 @@ describe("parseOwnerCommand", () => {
     expect(parseOwnerCommand(`/bot ${id.toUpperCase()}`)).toEqual({ kind: "bot", conversationId: id });
   });
 
+  it("/sync va /unsync buyruqlari", () => {
+    expect(parseOwnerCommand("/sync -1001234567890")).toEqual({ kind: "sync", chatId: "-1001234567890" });
+    expect(parseOwnerCommand("/unsync@dilnoza_bot")).toEqual({ kind: "unsync" });
+    expect(parseOwnerCommand("/sync 12345")).toBeNull();
+  });
+
   it("noto'g'ri formatni rad etadi", () => {
     expect(parseOwnerCommand("/reply 123 salom")).toBeNull();
     expect(parseOwnerCommand(`/reply ${id}`)).toBeNull();

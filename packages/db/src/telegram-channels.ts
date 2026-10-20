@@ -94,7 +94,7 @@ export class TelegramChannels {
       await this.call(clean, "setWebhook", {
         url: `${this.publicBaseUrl.replace(/\/$/, "")}/telegram/${id}`,
         secret_token: secret,
-        allowed_updates: ["message"],
+        allowed_updates: ["message", "channel_post", "edited_channel_post", "my_chat_member"],
         drop_pending_updates: true,
       });
       await this.call(clean, "setMyCommands", {

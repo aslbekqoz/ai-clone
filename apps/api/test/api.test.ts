@@ -213,8 +213,13 @@ describe.skipIf(!url)("HTTP API (Postgres)", () => {
     expect(chat.citations[0]?.title).toBe("IELTS qo'llanma, 2-bet");
 
     const bad = new FormData();
-    bad.append("file", new File([new Uint8Array([1])], "rasm.png", { type: "image/png" }));
+    bad.append("file", new File([new Uint8Array([1])], "arxiv.zip", { type: "application/zip" }));
     expect((await app.request(`/v1/clones/${cloneId}/sources/file`, { method: "POST", headers: { authorization: `Bearer ${apiKey}` }, body: bad })).status).toBe(415);
+    const scan = new FormData();
+    scan.append("file", new File([new Uint8Array([1])], "skan.png", { type: "image/png" }));
+    const noOcr = await app.request(`/v1/clones/${cloneId}/sources/file`, { method: "POST", headers: { authorization: `Bearer ${apiKey}` }, body: scan });
+    expect(noOcr.status).toBe(422);
+    expect(((await noOcr.json()) as { error: string }).error).toContain("OCR sozlanmagan");
     expect((await call(`/v1/clones/${cloneId}/sources/youtube`, { method: "POST", key: apiKey, body: JSON.stringify({ url: "https://example.com/x" }) })).status).toBe(422);
   });
 

@@ -39,7 +39,7 @@ packages/core   AI yadro: o'zbek matnini normallashtirish (lotin/kirill), chunki
 packages/db     Postgres + pgvector sxemasi, har bir jadvalda RLS, bilim ombori, CloneService
                 (chat, lidlar, human takeover, tuzatish → tasdiqlangan javob, limitlar)
 apps/api        HTTP API (Hono), egasi dashboardi (/app), sayt vidjeti (/widget.js), ommaviy klon sahifasi (/c/<slug>)
-apps/bot        Telegram bot (grammY): suhbat, ovozli xabarlar (STT), /forget, egasiga eskalatsiya, /reply /takeover /bot
+apps/bot        Telegram bot (grammY): suhbat, ovozli xabarlar (STT), /forget, egasiga eskalatsiya, /reply /takeover /bot, kanal sinxroni /sync /unsync
 ```
 
 ### Ishga tushirish
@@ -65,7 +65,7 @@ Ikkalasi ham xato bersa, tizim qoidalar asosidagi tekshiruvga qaytadi. `TEI_RERA
 
 ```bash
 pnpm typecheck
-TEST_DATABASE_URL=postgres://aiclone:aiclone@localhost:5432/aiclone pnpm test   # 144 test: RLS, to'lovlar, monetizatsiya, ovoz, fayl, LLM qadamlari, Telegram, Instagram, WhatsApp
+TEST_DATABASE_URL=postgres://aiclone:aiclone@localhost:5432/aiclone pnpm test   # 149 test: RLS, to'lovlar, monetizatsiya, ovoz, fayl, LLM qadamlari, Telegram, Instagram, WhatsApp
 ```
 
 ### API qisqacha
@@ -121,7 +121,12 @@ Tarif obunalari so'mda: Creator 189 000, Pro 499 000, Business 1 490 000 so'm. Y
 
 Barcha `/v1` so'rovlari `Authorization: Bearer <api kalit>` sarlavhasini talab qiladi.
 
-> YouTube: avval subtitrlar olinadi (o'zbek → rus → ingliz). Subtitr bo'lmasa yoki YouTube server so'rovini bloklasa, audio STT orqali matnga aylantiriladi (`ELEVENLABS_API_KEY`). Skanerlangan (rasm) PDF'lar uchun OCR hali yo'q.
+> YouTube: avval subtitrlar olinadi (o'zbek → rus → ingliz). Subtitr bo'lmasa yoki YouTube server so'rovini bloklasa, audio STT orqali matnga aylantiriladi (`ELEVENLABS_API_KEY`).
+
+### OCR va Telegram kanali sinxroni
+
+- **OCR:** matn qatlami yo'q PDF (sahifasiga 30 belgidan kam) va rasmlar (png, jpg, webp) Claude orqali o'qiladi (`OCR_MODEL`, sukut bo'yicha `claude-opus-5-5`). Chegara 40 sahifa, undan katta faylga 413 qaytadi. `ANTHROPIC_API_KEY` bo'lmasa, javob 422 "OCR sozlanmagan" bo'ladi.
+- **Kanal sinxroni:** botni kanalga admin qiling, so'ng egasi botga `/sync -100…` yozadi. Bot o'zi kanal admini ekanini tekshiradi. Shundan keyin yangi va tahrirlangan postlar bilimga avtomatik qo'shiladi; 40 belgidan qisqa postlar o'tkazib yuboriladi, tahrirlangan post eski nusxasini almashtiradi. `/unsync` sinxronni to'xtatadi. Egasi tasdiqlamagan kanal postlari hech qachon bilimga tushmaydi.
 
 ### Instagram va WhatsApp
 
@@ -157,7 +162,6 @@ Egasi **Daromad** bo'limida mahsulot yaratadi (masalan, "50 ta savol" paketi yok
 
 ### Keyingi qadamlar (v1–v2, `docs/02-mahsulot-prd.md`)
 
-- Skanerlangan PDF'lar uchun OCR; Telegram kanalini avtomatik sinxronlash.
 - Webhook yangilanishlarini navbat (pg-boss) orqali qayta ishlash. Hozir javob webhook so'rovi ichida tayyorlanadi.
 - Video-avatar, klonlar marketpleysi, white-label.
 

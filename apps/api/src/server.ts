@@ -14,6 +14,7 @@ const app = createApp(rt.service, {
   meta: rt.meta,
   voice: rt.voice,
   monetization: rt.monetization,
+  ocr: rt.ocr,
 }, rt.billing);
 
 const port = Number(process.env.PORT ?? 8787);

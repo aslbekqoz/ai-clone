@@ -33,6 +33,7 @@ describe("bot: ovozli xabar oqimi", () => {
     tenantId: "t1",
     slug: "dilnoza",
     ownerTelegramChatId: "999",
+    telegramSync: null,
     persona: { name: "Dilnoza", bio: "", languages: ["uz"], grounded: true, disclosure: "🤖 AI-klon", style: { tone: "", address: "siz", emoji: "rare", length: "short", signaturePhrases: [], avoidTopics: [] } },
   };
 

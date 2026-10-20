@@ -25,4 +25,4 @@ await bot.api.setMyCommands([
   { command: "forget", description: "Mening ma'lumotlarimni o'chirish" },
 ]);
 console.log(`🤖 ${clone.persona.name} kloni Telegramda ishlamoqda (LLM: ${rt.llm}, ovoz: ${rt.stt ? rt.stt.id : "o'chiq"})`);
-await bot.start();
+await bot.start({ allowed_updates: ["message", "channel_post", "edited_channel_post", "my_chat_member"] });

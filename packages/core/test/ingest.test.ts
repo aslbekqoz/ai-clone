@@ -28,7 +28,8 @@ describe("parseFile", () => {
   it("TXT va qo'llab-quvvatlanmaydigan format", async () => {
     const txt = await parseFile("eslatma.md", "text/markdown", new TextEncoder().encode("# Sarlavha\r\n\r\n\r\n\r\nMatn"));
     expect(txt.sections[0]!.text).toBe("# Sarlavha\n\nMatn");
-    await expect(parseFile("rasm.png", "image/png", new Uint8Array([1, 2]))).rejects.toBeInstanceOf(UnsupportedFileError);
+    await expect(parseFile("arxiv.zip", "application/zip", new Uint8Array([1, 2]))).rejects.toBeInstanceOf(UnsupportedFileError);
+    await expect(parseFile("skan.png", "image/png", new Uint8Array([1, 2]))).rejects.toMatchObject({ name: "NeedsOcrError", kind: "image", mimeType: "image/png" });
   });
 });
 

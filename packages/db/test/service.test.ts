@@ -122,6 +122,22 @@ describe.skipIf(!url)("CloneService (Postgres)", () => {
     expect(mem).toEqual(["Ismi Lola, IELTS 7.5 maqsadi"]);
   });
 
+  it("Telegram kanal posti bilimga qo'shiladi, tahrirlansa almashtiriladi, qisqa post o'tkazib yuboriladi", async () => {
+    await svc.setTelegramSync(tenantA, cloneId, { chatId: "-1001234567890", title: "Dilnoza IELTS" });
+    expect((await svc.getClone(tenantA, cloneId))?.telegramSync).toEqual({ chatId: "-1001234567890", title: "Dilnoza IELTS" });
+    const post = { chatId: "-1001234567890", messageId: 77, date: new Date("2026-10-20"), channelTitle: "Dilnoza IELTS" };
+    expect(await svc.syncChannelPost(tenantA, cloneId, { ...post, text: "Yangi guruh 1-noyabrdan boshlanadi. Joylar soni 8 ta, ro'yxatdan o'ting!" })).toEqual({ added: true });
+    await svc.syncChannelPost(tenantA, cloneId, { ...post, text: "Yangi guruh 5-noyabrdan boshlanadi. Joylar soni 8 ta, ro'yxatdan o'ting!" });
+    const sources = (await svc.listSources(tenantA, cloneId)).filter((s) => s.uri === "tg://channel/-1001234567890/77");
+    expect(sources).toHaveLength(1);
+    const chat = await svc.chat(tenantA, cloneId, { channel: "web", externalId: "sync-user", message: "Yangi guruh qachon boshlanadi?" });
+    expect(chat.reply).toContain("5-noyabr");
+    expect(chat.citations[0]?.url).toBeUndefined();
+    expect(await svc.syncChannelPost(tenantA, cloneId, { ...post, messageId: 78, text: "👍" })).toEqual({ added: false });
+    await svc.setTelegramSync(tenantA, cloneId, null);
+    expect((await svc.getClone(tenantA, cloneId))?.telegramSync).toBeNull();
+  });
+
   it("limit tugaganda LLM chaqirilmaydi", async () => {
     const { tenantId } = await svc.createTenant("Limited");
     const c = await svc.createClone(tenantId, { slug: `limited-${suffix}`, name: "L" });

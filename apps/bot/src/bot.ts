@@ -36,11 +36,24 @@ export function createBot(svc: CloneService, cfg: BotConfig): Bot {
     await ctx.reply(removed ? "✅ Suhbat tarixi va ma'lumotlaringiz o'chirildi." : "Sizga tegishli saqlangan ma'lumot yo'q.");
   });
 
-  bot.command(["reply", "takeover", "bot"], async (ctx) => {
+  bot.command(["reply", "takeover", "bot", "sync", "unsync"], async (ctx) => {
     if (!isOwner(ctx)) return;
     const cmd = parseOwnerCommand(ctx.message?.text ?? "");
-    if (!cmd) return ctx.reply("Format: /reply <suhbat-id> <matn> · /takeover <suhbat-id> · /bot <suhbat-id>");
+    if (!cmd) return ctx.reply("Format: /reply <suhbat-id> <matn> · /takeover <suhbat-id> · /bot <suhbat-id> · /sync <kanal-id> · /unsync");
     try {
+      if (cmd.kind === "sync") {
+        // Faqat bot haqiqatan admin bo'lgan kanal — egasi tasdiqlagan kanal sinxronlanadi.
+        const member = await ctx.api.getChatMember(cmd.chatId, ctx.me.id);
+        if (member.status !== "administrator") return ctx.reply("❌ Men bu kanalda admin emasman. Avval botni kanalga admin qilib qo'shing.");
+        const chat = await ctx.api.getChat(cmd.chatId);
+        const title = "title" in chat && chat.title ? chat.title : cmd.chatId;
+        await svc.setTelegramSync(tenantId, clone.id, { chatId: cmd.chatId, title });
+        return ctx.reply(`✅ «${title}» kanalining yangi postlari endi klon bilimiga avtomatik qo'shiladi. To'xtatish: /unsync`);
+      }
+      if (cmd.kind === "unsync") {
+        await svc.setTelegramSync(tenantId, clone.id, null);
+        return ctx.reply("✅ Kanal sinxronlash to'xtatildi.");
+      }
       if (cmd.kind === "reply") {
         await svc.setMode(tenantId, cmd.conversationId, "human");
         const dest = await svc.ownerReply(tenantId, cmd.conversationId, cmd.text);
@@ -52,6 +65,24 @@ export function createBot(svc: CloneService, cfg: BotConfig): Bot {
     } catch (err) {
       return ctx.reply(`❌ ${(err as Error).message}`);
     }
+  });
+
+  // --- Kanal sinxronlash ---
+  bot.on("my_chat_member", async (ctx) => {
+    const upd = ctx.myChatMember;
+    if (upd.chat.type !== "channel" || upd.new_chat_member.status !== "administrator" || !ownerChatId) return;
+    await bot.api
+      .sendMessage(ownerChatId, `📢 Meni «${upd.chat.title}» kanaliga admin qilib qo'shishdi.\nKanal postlarini klon bilimiga avtomatik qo'shish uchun: /sync ${upd.chat.id}`)
+      .catch(() => {});
+  });
+
+  bot.on(["channel_post", "edited_channel_post"], async (ctx) => {
+    const post = ctx.channelPost ?? ctx.editedChannelPost;
+    if (!post) return;
+    const fresh = await svc.getClone(tenantId, clone.id);
+    if (!fresh?.telegramSync || fresh.telegramSync.chatId !== String(post.chat.id)) return;
+    const text = post.text ?? post.caption ?? "";
+    await svc.syncChannelPost(tenantId, clone.id, { chatId: String(post.chat.id), messageId: post.message_id, text, date: new Date((post.edit_date ?? post.date) * 1000), channelTitle: post.chat.title ?? fresh.telegramSync.title });
   });
 
   /** Foydalanuvchi xabariga klon javobi (matn yoki ovozdan olingan matn). */

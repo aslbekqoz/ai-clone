@@ -32,6 +32,8 @@ export interface CloneRecord {
   slug: string;
   persona: ClonePersona;
   ownerTelegramChatId: string | null;
+  /** Bilimi avtomatik sinxronlanadigan Telegram kanali (egasi tasdiqlagan). */
+  telegramSync: { chatId: string; title: string } | null;
 }
 
 export interface CreateCloneInput {
@@ -204,7 +206,7 @@ export class CloneService {
       type: input.type,
       title: input.title,
       ...(input.uri ? { uri: input.uri } : {}),
-      sections: [{ text: input.text, locator: { ...input.locator, ...(input.uri ? { url: input.uri } : {}) } }],
+      sections: [{ text: input.text, locator: { ...input.locator, ...(input.uri?.startsWith("http") ? { url: input.uri } : {}) } }],
     });
   }
 
@@ -245,6 +247,27 @@ export class CloneService {
       }
       return { sourceId, chunks: prepared.length, duplicate: false };
     });
+  }
+
+  /** Kanal sinxronlashni yoqish (chatId) yoki o'chirish (null). */
+  async setTelegramSync(tenantId: string, cloneId: string, sync: { chatId: string; title: string } | null): Promise<void> {
+    await withTenant(this.db, tenantId, async (tx) => {
+      await tx.query("UPDATE clones SET telegram_sync_chat_id = $2, telegram_sync_title = $3 WHERE id = $1", [cloneId, sync?.chatId ?? null, sync?.title ?? null]);
+      await audit(tx, tenantId, "owner", sync ? "telegram.sync.on" : "telegram.sync.off", cloneId);
+    });
+  }
+
+  /**
+   * Kanal posti bilimga qo'shiladi; tahrirlangan post eski versiyasini almashtiradi.
+   * Juda qisqa postlar (e'lon, emoji) o'tkazib yuboriladi — eksport parseridagi qoida bilan bir xil.
+   */
+  async syncChannelPost(tenantId: string, cloneId: string, post: { chatId: string; messageId: number; text: string; date: Date; channelTitle: string }): Promise<{ added: boolean }> {
+    const uri = `tg://channel/${post.chatId}/${post.messageId}`;
+    await withTenant(this.db, tenantId, (tx) => tx.query("DELETE FROM sources WHERE clone_id = $1 AND uri = $2", [cloneId, uri]));
+    const text = post.text.trim();
+    if (text.length < 40) return { added: false };
+    const r = await this.addSource(tenantId, cloneId, { type: "text", title: `${post.channelTitle} — ${post.date.toISOString().slice(0, 10)}`, text, uri, locator: { post: String(post.messageId) } });
+    return { added: !r.duplicate };
   }
 
   /** Telegram eksporti: har bir post — alohida manba (iqtibosda post sanasi), egasining javoblari — uslub namunalari. */
@@ -525,6 +548,8 @@ async function getClone(tx: Tx, cloneId: string): Promise<CloneRecord | null> {
     grounded: boolean;
     disclosure_text: string;
     owner_telegram_chat_id: string | null;
+    telegram_sync_chat_id: string | null;
+    telegram_sync_title: string | null;
   }>("SELECT * FROM clones WHERE id = $1", [cloneId]);
   const r = rows[0];
   if (!r) return null;
@@ -533,6 +558,7 @@ async function getClone(tx: Tx, cloneId: string): Promise<CloneRecord | null> {
     tenantId: r.tenant_id,
     slug: r.slug,
     ownerTelegramChatId: r.owner_telegram_chat_id,
+    telegramSync: r.telegram_sync_chat_id ? { chatId: String(r.telegram_sync_chat_id), title: r.telegram_sync_title ?? "" } : null,
     persona: { name: r.display_name, bio: r.bio, languages: r.languages, style: { ...DEFAULT_STYLE, ...r.style_profile }, grounded: r.grounded, disclosure: r.disclosure_text },
   };
 }

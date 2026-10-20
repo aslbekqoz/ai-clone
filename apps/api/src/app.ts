@@ -1,4 +1,16 @@
-import { MAX_FILE_BYTES, UnsupportedFileError, fetchYouTubeTranscript, parseFile, parseMetaWebhook, verifyMetaSignature, type SpeechToText } from "@ai-clone/core";
+import {
+  MAX_FILE_BYTES,
+  MAX_OCR_PAGES,
+  NeedsOcrError,
+  UnsupportedFileError,
+  fetchYouTubeTranscript,
+  parseFile,
+  parseMetaWebhook,
+  verifyMetaSignature,
+  type DocumentOcr,
+  type ParsedDocument,
+  type SpeechToText,
+} from "@ai-clone/core";
 import { createWebhookDispatcher } from "@ai-clone/bot";
 import {
   MetaConnectError,
@@ -39,6 +51,8 @@ export interface AppConfig {
   meta?: { channels: MetaChannels; appSecret: string; verifyToken: string } | null;
   voice?: VoiceService | null;
   monetization?: MonetizationService | null;
+  /** Skanerlangan PDF va rasmlar uchun. */
+  ocr?: DocumentOcr | null;
 }
 
 type Env = { Variables: { tenantId: string } };
@@ -200,15 +214,27 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
     const file = form.file;
     if (!(file instanceof File)) throw new HTTPException(422, { message: "file maydoni kerak (multipart/form-data)" });
     if (file.size > MAX_FILE_BYTES) throw new HTTPException(413, { message: "Fayl 20 MB dan katta" });
-    let doc;
+    const data = new Uint8Array(await file.arrayBuffer());
+    let doc: ParsedDocument;
+    let ocrUsed = false;
     try {
-      doc = await parseFile(file.name, file.type, new Uint8Array(await file.arrayBuffer()));
+      doc = await parseFile(file.name, file.type, data);
     } catch (err) {
-      throw new HTTPException(err instanceof UnsupportedFileError ? 415 : 422, { message: (err as Error).message });
+      if (!(err instanceof NeedsOcrError)) throw new HTTPException(err instanceof UnsupportedFileError ? 415 : 422, { message: (err as Error).message });
+      if (!cfg.ocr) throw new HTTPException(422, { message: `${err.message}. Serverda OCR sozlanmagan (ANTHROPIC_API_KEY).` });
+      if (err.pages > MAX_OCR_PAGES) throw new HTTPException(413, { message: `Skanerlangan hujjat ${err.pages} bet — OCR uchun ${MAX_OCR_PAGES} betgacha bo'lib yuklang` });
+      try {
+        const sections = err.kind === "pdf" ? await cfg.ocr.ocrPdf(data) : await cfg.ocr.ocrImage(data, err.mimeType as "image/png" | "image/jpeg" | "image/webp");
+        if (!sections.length) throw new Error("Hujjatda o'qiladigan matn topilmadi");
+        doc = { type: "pdf", title: err.title, sections };
+        ocrUsed = true;
+      } catch (ocrErr) {
+        throw new HTTPException(422, { message: `OCR: ${(ocrErr as Error).message}` });
+      }
     }
     const title = typeof form.title === "string" && form.title.trim() ? form.title.trim() : doc.title;
     const out = await svc.addSections(t(c), c.req.param("id"), { type: doc.type, title, sections: doc.sections });
-    return c.json({ ...out, sections: doc.sections.length }, 201);
+    return c.json({ ...out, sections: doc.sections.length, ocr: ocrUsed }, 201);
   });
   v1.post("/clones/:id/sources/youtube", async (c) => {
     await cloneOr404(c);

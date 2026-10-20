@@ -1,4 +1,4 @@
-import { AnthropicProvider, DEFAULT_POLICY, ElevenLabsStt, ElevenLabsVoice, HashingEmbedder, LLMRouter, MockProvider, TeiEmbedder, TeiReranker, mockPolicy, type Embedder, type SpeechToText } from "@ai-clone/core";
+import { AnthropicProvider, ClaudeOcr, DEFAULT_POLICY, ElevenLabsStt, ElevenLabsVoice, HashingEmbedder, LLMRouter, MockProvider, TeiEmbedder, TeiReranker, mockPolicy, type DocumentOcr, type Embedder, type SpeechToText } from "@ai-clone/core";
 import { BillingService, billingConfigFromEnv } from "./billing.js";
 import { parseSecretKey } from "./crypto.js";
 import { createPool, type Db } from "./pool.js";
@@ -24,6 +24,8 @@ export interface Runtime {
   voice: VoiceService;
   /** PAYMENT_LINK_SECRET va PUBLIC_BASE_URL bo'lsa — obunachilar klonga pullik kirish oladi. */
   monetization: MonetizationService | null;
+  /** Claude ulanganda — skanerlangan PDF va rasmlar uchun OCR. */
+  ocr: DocumentOcr | null;
 }
 
 /**
@@ -57,5 +59,6 @@ export function createRuntime(env: NodeJS.ProcessEnv = process.env): Runtime {
       : null;
   const cloner = env.ELEVENLABS_API_KEY ? new ElevenLabsVoice(env.ELEVENLABS_API_KEY, env.ELEVENLABS_TTS_MODEL ?? "eleven_v3") : null;
   const voice = new VoiceService(db, cloner, stt, { allowCrossBorder: env.VOICE_ALLOW_CROSS_BORDER === "1" });
-  return { db, service, telegram, meta, voice, monetization, billing, llm, embedder, stt };
+  const ocr = env.ANTHROPIC_API_KEY ? new ClaudeOcr({ apiKey: env.ANTHROPIC_API_KEY }, env.OCR_MODEL ?? "claude-opus-5-5") : null;
+  return { db, service, telegram, meta, voice, monetization, ocr, billing, llm, embedder, stt };
 }
