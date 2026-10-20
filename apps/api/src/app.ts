@@ -28,6 +28,7 @@ import {
   type CloneService,
   type Category,
   type JobQueue,
+  type SystemStats,
   type MarketplaceService,
   type MetaChannels,
   type MonetizationService,
@@ -46,6 +47,7 @@ import { z } from "zod";
 import { fetchUrlText } from "./fetch-url.js";
 import { RateLimiter } from "./rate-limit.js";
 import { dashboardHtml } from "./dashboard.js";
+import { Metrics, gauge, log, observe } from "./metrics.js";
 import { PAGE_SIZE, exploreHtml } from "./explore.js";
 import { clonePageHtml, payPageHtml, widgetJs } from "./widget.js";
 
@@ -76,9 +78,16 @@ export interface AppConfig {
    * 202 + vazifa ID qaytaradi. Bo'lmasa — hammasi so'rov ichida (testlar, oddiy lokal ishga tushirish).
    */
   jobs?: { queue: JobQueue; notify?: () => void } | null;
+  /** Monitoring: /health/ready, /metrics (METRICS_TOKEN bilan) va kirish loglari. */
+  ops?: {
+    readiness?: () => Promise<{ ok: boolean } & Record<string, unknown>>;
+    stats?: () => Promise<SystemStats>;
+    metricsToken?: string;
+    logRequests?: boolean;
+  };
 }
 
-type Env = { Variables: { tenantId: string } };
+type Env = { Variables: { tenantId: string; requestId: string } };
 
 const plan = z.enum(["free", "creator", "pro", "business", "enterprise"]);
 const style = z
@@ -171,6 +180,8 @@ async function body<T extends z.ZodType>(c: Context, schema: T): Promise<z.infer
 
 export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: BillingService) {
   const app = new Hono<Env>();
+  const metrics = new Metrics();
+  app.use("*", observe(metrics, { logRequests: cfg.ops?.logRequests ?? false }));
   const publicLimiter = new RateLimiter(20, 60_000);
 
   app.onError((err, c) => {
@@ -180,8 +191,8 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
     if (err.message.includes("topilmadi")) return c.json({ error: err.message }, 404);
     if ((err as { code?: string }).code === "23505") return c.json({ error: "Bunday yozuv allaqachon mavjud" }, 409);
     if ((err as { code?: string }).code === "22P02") return c.json({ error: "Topilmadi" }, 404);
-    console.error(err);
-    return c.json({ error: "Ichki xato" }, 500);
+    log("error", err.message, { requestId: c.get("requestId"), path: c.req.path, stack: err.stack });
+    return c.json({ error: "Ichki xato", requestId: c.get("requestId") }, 500);
   });
 
   // --- O'z domeni: ai.dilnoza.uz → shu klonning sahifasi. Boshqaruv yo'llari mijoz domenida ochilmaydi. ---
@@ -208,6 +219,29 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
   });
 
   app.get("/health", (c) => c.json({ ok: true }));
+  // Readiness: baza va migratsiyalar. Yuk balanslagich trafikni faqat 200 bo'lganda yuboradi.
+  app.get("/health/ready", async (c) => {
+    const r = cfg.ops?.readiness ? await cfg.ops.readiness() : { ok: true };
+    return c.json(r, r.ok ? 200 : 503);
+  });
+  app.get("/metrics", async (c) => {
+    const token = cfg.ops?.metricsToken;
+    if (!token || c.req.header("authorization") !== `Bearer ${token}`) return c.text("Ruxsat yo'q", 401);
+    const extra: string[] = [];
+    if (cfg.ops?.stats) {
+      const s = await cfg.ops.stats();
+      extra.push(
+        gauge("aiclone_jobs_queued", "Navbatdagi vazifalar", s.jobs.map((j) => ({ labels: { queue: j.queue }, value: j.queued }))),
+        gauge("aiclone_jobs_running", "Bajarilayotgan vazifalar", s.jobs.map((j) => ({ labels: { queue: j.queue }, value: j.running }))),
+        gauge("aiclone_jobs_failed_24h", "Oxirgi 24 soatda muvaffaqiyatsiz vazifalar", s.jobs.map((j) => ({ labels: { queue: j.queue }, value: j.failed24h }))),
+        gauge("aiclone_jobs_oldest_queued_seconds", "Eng eski kutayotgan vazifa yoshi", s.jobs.map((j) => ({ labels: { queue: j.queue }, value: j.oldestQueuedSec }))),
+        gauge("aiclone_messages_today", "Bugungi klon javoblari", [{ value: s.today.messages }]),
+        gauge("aiclone_llm_cost_usd_today", "Bugungi LLM xarajati (USD)", [{ value: s.today.costUsd }]),
+        gauge("aiclone_avatar_failed_24h", "Oxirgi 24 soatda chiqmagan videolar", [{ value: s.avatarRendersFailed24h }]),
+      );
+    }
+    return c.text(metrics.render(extra), 200, { "content-type": "text/plain; version=0.0.4" });
+  });
   // Caddy on-demand TLS: sertifikat faqat tasdiqlangan mijoz domeniga chiqariladi.
   app.get("/internal/tls-ask", async (c) => {
     const domain = c.req.query("domain") ?? "";

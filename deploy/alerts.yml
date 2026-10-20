@@ -1,0 +1,34 @@
+# Prometheus ogohlantirish qoidalari (/metrics, Authorization: Bearer $METRICS_TOKEN).
+groups:
+  - name: aiclone
+    rules:
+      - alert: ApiServerErrors
+        expr: sum(rate(aiclone_http_requests_total{status=~"5.."}[5m])) / sum(rate(aiclone_http_requests_total[5m])) > 0.02
+        for: 5m
+        labels: { severity: page }
+        annotations: { summary: "API so'rovlarining 2% dan ko'pi 5xx bilan tugayapti" }
+      - alert: ChatSlow
+        expr: histogram_quantile(0.95, sum by (le) (rate(aiclone_http_request_duration_seconds_bucket{route=~".*/chat"}[10m]))) > 10
+        for: 10m
+        labels: { severity: warn }
+        annotations: { summary: "Chat javobining p95 vaqti 10 soniyadan oshdi" }
+      # Webhook navbati: foydalanuvchi javobni kutyapti.
+      - alert: QueueBacklog
+        expr: max by (queue) (aiclone_jobs_oldest_queued_seconds{queue=~"telegram.update|meta.inbound"}) > 60
+        for: 2m
+        labels: { severity: page }
+        annotations: { summary: "{{ $labels.queue }}: vazifa 60 soniyadan beri kutmoqda — worker'lar ishlamayapti yoki yetmayapti" }
+      - alert: JobsFailing
+        expr: sum by (queue) (aiclone_jobs_failed_24h) > 20
+        labels: { severity: warn }
+        annotations: { summary: "{{ $labels.queue }}: 24 soatda 20 dan ortiq vazifa muvaffaqiyatsiz" }
+      # Xarajat chegarasi — moliyaviy modeldagi xabar narxiga qarab sozlang.
+      - alert: LlmSpendHigh
+        expr: aiclone_llm_cost_usd_today > 50
+        labels: { severity: warn }
+        annotations: { summary: "Bugungi LLM xarajati $50 dan oshdi" }
+      - alert: ApiDown
+        expr: up{job="aiclone"} == 0
+        for: 2m
+        labels: { severity: page }
+        annotations: { summary: "API metrikalari olinmayapti" }

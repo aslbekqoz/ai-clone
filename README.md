@@ -75,6 +75,13 @@ docker compose -f docker-compose.prod.yml run --rm api seed   # ixtiyoriy: demo 
 - **Bitta obraz:** `docker run aiclone api | worker | migrate | seed`.
 - **Tashqi yopiq yo'llar:** `/internal/*` va `/metrics` Caddy orqali tashqaridan ochilmaydi.
 
+### Monitoring
+
+- **Holat tekshiruvlari:** `/health` (jarayon tirikmi) va `/health/ready` (baza ulanadi va barcha migratsiyalar qo'llangan, aks holda 503).
+- **Metrikalar:** `/metrics` Prometheus formatida, `Authorization: Bearer $METRICS_TOKEN` bilan. Ichida: so'rovlar va javob vaqti (marshrut shabloni bo'yicha, ID'larsiz), navbat chuqurligi va eng eski vazifa yoshi, muvaffaqiyatsiz vazifalar, bugungi xabarlar va LLM xarajati.
+- **Ogohlantirishlar:** `deploy/alerts.yml` da 5xx ulushi, sekin chat, webhook navbati tiqilishi va kunlik xarajat chegarasi bor.
+- **Loglar:** prod'da bir qatorli JSON. Har bir so'rovda `X-Request-Id` bor, 500 javobida ham qaytadi, shuning uchun foydalanuvchi shikoyatini logdan topish mumkin. Query satri logga yozilmaydi (tashrifchi ID'si, tokenlar).
+
 ### Testlar
 
 ```bash

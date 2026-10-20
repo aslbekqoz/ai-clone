@@ -6,9 +6,13 @@ import { createPool, type Db } from "./pool.js";
 const MIGRATION_LOCK = 7_031_000_001;
 const MIGRATIONS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "../migrations");
 
+export async function migrationFiles(): Promise<string[]> {
+  return (await readdir(MIGRATIONS_DIR)).filter((f) => f.endsWith(".sql")).sort();
+}
+
 /** migrations/ dagi .sql fayllarni tartib bilan, har birini bir marta qo'llaydi. */
 export async function migrate(db: Db): Promise<string[]> {
-  const files = (await readdir(MIGRATIONS_DIR)).filter((f) => f.endsWith(".sql")).sort();
+  const files = await migrationFiles();
   const client = await db.connect();
   const applied: string[] = [];
   try {

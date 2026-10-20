@@ -1,5 +1,5 @@
 import { serve } from "@hono/node-server";
-import { createRuntime, migrate } from "@ai-clone/db";
+import { createRuntime, migrate, readiness, systemStats } from "@ai-clone/db";
 import { createApp } from "./app.js";
 import { createAvatarRequester, createRuntimeWorker } from "./jobs.js";
 
@@ -23,6 +23,12 @@ const app = createApp(rt.service, {
   whiteLabel: rt.whiteLabel,
   avatar: { service: rt.avatar, request: rt.jobs ? createAvatarRequester(rt.avatar, rt.jobs, worker ? () => worker.notify() : undefined) : null },
   ocr: rt.ocr,
+  ops: {
+    readiness: () => readiness(rt.db),
+    stats: () => systemStats(rt.db),
+    ...(process.env.METRICS_TOKEN ? { metricsToken: process.env.METRICS_TOKEN } : {}),
+    logRequests: process.env.LOG_REQUESTS !== "0",
+  },
   jobs: rt.jobs ? { queue: rt.jobs, ...(worker ? { notify: () => worker.notify() } : {}) } : null,
 }, rt.billing);
 
