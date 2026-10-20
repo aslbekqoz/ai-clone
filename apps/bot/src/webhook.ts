@@ -11,6 +11,8 @@ export interface WebhookDispatcherOptions {
   client?: ApiClientOptions;
   /** Bot nusxasi shuncha vaqt keshlanadi — klon sozlamalari o'zgarsa, keyin yangilanadi. */
   cacheMs?: number;
+  /** Video-avatar so'rovi (bot va chat ma'lum bo'lganda). */
+  avatar?: (bot: ResolvedBot, req: { conversationId: string; reply: string; chatId: string }) => Promise<unknown>;
 }
 
 /**
@@ -41,6 +43,7 @@ export function createWebhookDispatcher(svc: CloneService, channels: TelegramCha
         ...(opts.stt ? { stt: opts.stt } : {}),
         ...(opts.voice ? { voice: opts.voice } : {}),
         ...(opts.client ? { client: opts.client } : {}),
+        ...(opts.avatar ? { avatar: (req: { conversationId: string; reply: string; chatId: string }) => opts.avatar!(resolved, req) } : {}),
       });
       entry = { bot, at: Date.now() };
       cache.set(resolved.id, entry);

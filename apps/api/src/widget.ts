@@ -24,6 +24,7 @@ const STYLES = `
 .acw-fab{position:fixed;right:20px;bottom:20px;width:56px;height:56px;border-radius:50%;border:0;background:var(--brand,var(--ink));color:var(--bone);font-size:24px;cursor:pointer;box-shadow:0 6px 24px rgba(0,0,0,.18);z-index:2147483000}
 .acw-float{position:fixed;right:20px;bottom:88px;width:min(380px,calc(100vw - 32px));height:min(560px,calc(100vh - 120px));z-index:2147483000;box-shadow:0 12px 40px rgba(0,0,0,.18)}
 .acw-hidden{display:none}
+.acw-video{display:block;width:100%;max-width:280px;margin-top:8px;border-radius:10px;background:#000}
 .acw-logo{width:28px;height:28px;border-radius:7px;object-fit:cover;float:left;margin-right:10px}
 .acw-rate{display:flex;gap:4px;margin-top:6px}
 .acw-rate button{border:1px solid var(--line);background:transparent;border-radius:8px;padding:1px 8px;font-size:13px;cursor:pointer}
@@ -55,19 +56,22 @@ if(target){panel.style.height="100%";target.appendChild(root);}else{
   fab.onclick=()=>{panel.classList.toggle("acw-hidden");if(!panel.classList.contains("acw-hidden"))input.focus();};root.appendChild(fab);document.body.appendChild(root);}
 function rate(m,id){const r=document.createElement("div");r.className="acw-rate";[[1,"👍"],[-1,"👎"]].forEach(([v,l])=>{const b=document.createElement("button");b.type="button";b.textContent=l;b.setAttribute("aria-label",v>0?"Foydali":"Foydasiz");b.setAttribute("aria-pressed","false");
   b.onclick=async()=>{try{const x=await fetch(BASE+"/public/"+encodeURIComponent(slug)+"/feedback",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({visitorId:vid,messageId:id,rating:v})});if(x.ok)r.querySelectorAll("button").forEach(o=>o.setAttribute("aria-pressed",String(o===b)));}catch{}};r.appendChild(b);});m.appendChild(r);}
+function video(m,id){const u=BASE+"/public/"+encodeURIComponent(slug)+"/video/"+id;let n=0;const t=setInterval(async()=>{if(++n>60)return clearInterval(t);
+  try{const r=await fetch(u+"?visitorId="+vid);if(!r.ok)return clearInterval(t);const s=await r.json();if(s.status==="failed")return clearInterval(t);if(s.status!=="done")return;clearInterval(t);
+    const v=document.createElement("video");v.className="acw-video";v.controls=true;v.playsInline=true;v.preload="metadata";v.src=u+"/file?visitorId="+vid;m.appendChild(v);log.scrollTop=log.scrollHeight;}catch{}},3000);}
 function add(text,cls,citations,offers,messageId){if(offers&&offers.length)text=text.split("\\n").filter(l=>!/^• .*https?:\\/\\//.test(l)).join("\\n");const m=document.createElement("div");m.className="acw-msg "+cls;m.textContent=text.replace(/\\s*\\[S\\d+(?:,\\s*S\\d+)*\\]/g,"");
   if(citations&&citations.length){const s=document.createElement("span");s.className="acw-src";s.append("Manba: ");
     citations.forEach((c,i)=>{if(i)s.append(", ");if(c.url&&/^https?:/.test(c.url)){const a=document.createElement("a");a.href=c.url;a.target="_blank";a.rel="noopener";a.textContent=c.title;s.append(a);}else s.append(c.title);});m.appendChild(s);}
   if(offers&&offers.length){const o=document.createElement("div");o.className="acw-offers";
     offers.forEach(x=>{if(!/^https?:/.test(x.url))return;const a=document.createElement("a");a.href=x.url;a.target="_blank";a.rel="noopener";a.textContent=x.title+" — "+Number(x.priceUzs).toLocaleString("ru-RU")+" so'm";o.appendChild(a);});m.appendChild(o);}
   if(messageId&&!(offers&&offers.length))rate(m,messageId);
-  log.appendChild(m);log.scrollTop=log.scrollHeight;}
+  log.appendChild(m);log.scrollTop=log.scrollHeight;return m;}
 let since=new Date().toISOString(),poll=null;
 function startPolling(){if(poll)return;poll=setInterval(async()=>{try{const r=await fetch(BASE+"/public/"+encodeURIComponent(slug)+"/updates?visitorId="+vid+"&after="+encodeURIComponent(since));
   if(!r.ok)return;for(const m of await r.json()){add(m.text,"acw-owner");since=m.at;}}catch{}},5000);}
 form.addEventListener("submit",async(e)=>{e.preventDefault();const text=input.value.trim();if(!text)return;input.value="";add(text,"acw-user");btn.disabled=true;
   try{const r=await fetch(BASE+"/public/"+encodeURIComponent(slug)+"/chat",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({visitorId:vid,message:text})});
-    const d=await r.json();if(!r.ok)add(d.error||"Xatolik yuz berdi","acw-bot");else if(d.reply)add(d.reply,"acw-bot",d.citations,d.offers,d.messageId);else{add("Xabaringiz egasiga yetkazildi — u shu yerda javob beradi.","acw-bot");}
+    const d=await r.json();if(!r.ok)add(d.error||"Xatolik yuz berdi","acw-bot");else if(d.reply){const m=add(d.reply,"acw-bot",d.citations,d.offers,d.messageId);if(d.video&&/^[0-9a-f-]{36}$/.test(d.video.id))video(m,d.video.id);}else{add("Xabaringiz egasiga yetkazildi — u shu yerda javob beradi.","acw-bot");}
     if(d.humanMode)startPolling();}
   catch{add("Tarmoq xatosi, qayta urinib ko'ring.","acw-bot");}finally{btn.disabled=false;input.focus();}});
 })();`;

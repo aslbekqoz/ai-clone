@@ -1,7 +1,7 @@
 import { serve } from "@hono/node-server";
 import { createRuntime, migrate } from "@ai-clone/db";
 import { createApp } from "./app.js";
-import { createRuntimeWorker } from "./jobs.js";
+import { createAvatarRequester, createRuntimeWorker } from "./jobs.js";
 
 const rt = createRuntime();
 await migrate(rt.db);
@@ -21,6 +21,7 @@ const app = createApp(rt.service, {
   monetization: rt.monetization,
   marketplace: rt.marketplace,
   whiteLabel: rt.whiteLabel,
+  avatar: { service: rt.avatar, request: rt.jobs ? createAvatarRequester(rt.avatar, rt.jobs, worker ? () => worker.notify() : undefined) : null },
   ocr: rt.ocr,
   jobs: rt.jobs ? { queue: rt.jobs, ...(worker ? { notify: () => worker.notify() } : {}) } : null,
 }, rt.billing);

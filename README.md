@@ -66,7 +66,7 @@ Ikkalasi ham xato bersa, tizim qoidalar asosidagi tekshiruvga qaytadi. `TEI_RERA
 
 ```bash
 pnpm typecheck
-TEST_DATABASE_URL=postgres://aiclone:aiclone@localhost:5432/aiclone pnpm test   # 174 test: RLS, navbat, katalog, to'lovlar, monetizatsiya, ovoz, fayl, LLM qadamlari, Telegram, Instagram, WhatsApp
+TEST_DATABASE_URL=postgres://aiclone:aiclone@localhost:5432/aiclone pnpm test   # 183 test: RLS, navbat, katalog, to'lovlar, monetizatsiya, ovoz, fayl, LLM qadamlari, Telegram, Instagram, WhatsApp
 ```
 
 > Prod'dagi kabi superuser bo'lmagan ega bilan tekshirish: bazani oddiy rol (`CREATEROLE`) egaligida yarating, kengaytmalarni (`vector`, `pg_trgm`, `pgcrypto`) admin o'rnatadi, keyin shu rol bilan `TEST_DATABASE_URL` ni ishga tushiring. Docker'dagi `aiclone` superuser bo'lgani uchun RLS xatolarini yashirishi mumkin.
@@ -100,6 +100,8 @@ TEST_DATABASE_URL=postgres://aiclone:aiclone@localhost:5432/aiclone pnpm test   
 | GET/POST | `/admin/reports` · `/admin/clones/:id/moderation` (`x-admin-token`) | Shikoyatlar va moderatsiya |
 | GET/PATCH/PUT/POST/DELETE | `/v1/clones/:id/white-label` · `/brand` · `/domain` · `/domain/verify` | White-label: brend va o'z domeni (Business) |
 | GET | `/public/:slug/config` · `/internal/tls-ask?domain=` | Vidjet uchun brend; Caddy on-demand TLS tekshiruvi |
+| GET/POST/PATCH/DELETE | `/v1/clones/:id/avatar` | Video-avatar: surat va rozilik (multipart `photo`, `signature`), rejim, qaytarib olish |
+| GET | `/public/:slug/video/:id` · `/public/:slug/video/:id/file` | Vidjet: video holati va faylning o'zi (faqat o'z tashrifchisiga) |
 | GET | `/pay/:token` · `/pay/:token/{payme,click}` | Obunachi to'lov sahifasi (imzolangan havola) |
 | POST | `/admin/payouts` (`x-admin-token`) | Kreatorga to'lab berilgan summani qayd etish |
 | GET/POST | `/meta/webhook` | Meta webhooki: tasdiqlash (`hub.challenge`) va `X-Hub-Signature-256` imzosi bilan xabarlar |
@@ -141,6 +143,17 @@ Egasi **Sozlamalar → Katalog** bo'limida kategoriya va qisqa tavsifni tanlab, 
 - **Moderatsiya:** katalogdagi klon sahifasida "Shikoyat qilish" bor (boshqa shaxs nomidan, zararli maslahat, spam). Admin shikoyatlarni `/admin/reports` da ko'radi va klonni bloklaydi. Bloklangan klon katalogdan yo'qoladi, lekin o'z havolasi orqali ishlashda davom etadi.
 
 > Katalog reytingi hozir har so'rovda hisoblanadi; klonlar minglab bo'lganda uni materialized view'ga ko'chirish kerak.
+
+### Video-avatar
+
+Business tarifida klon qisqa javoblarni egasining yuzi va ovozida video sifatida ham yuboradi:
+- **Shartlar:** avval ovoz kloni (rozilik bilan) yaratilgan bo'ladi. Keyin egasi **Ovoz → Video-avatar** bo'limida o'z suratini yuklaydi va rozilik matnini to'liq ismini yozib tasdiqlaydi. Fayl turi baytlardan tekshiriladi (JPG yoki PNG).
+- **Qayerda ishlaydi:** vidjetda va ulangan Telegram botida (ko'p klonli rejim). Matnli javob darhol boradi, video navbatda tayyorlanib, ortidan keladi. 300 belgigacha bo'lgan javoblar videoga aylanadi, uzunroqlari faqat matnda qoladi. Suhbatdagi birinchi video "Men …ning AI-kloniman" deb boshlanadi.
+- **Kvota:** Business tarifida oyiga 20 daqiqa, Enterprise'da 100 daqiqa.
+- **Provayder:** D-ID (`DID_API_KEY`). Surat har bir video uchun D-ID'ning vaqtinchalik xotirasiga yuklanadi; tayyor video yuklab olingach, D-ID'dagi nusxa o'chiriladi. D-ID mashhur shaxsni aniqlasa, so'rovni rad etadi va egasiga tushunarli xato qaytadi.
+- **Biometrik ma'lumot:** surat va rozilik faqat bazada saqlanadi, ilova roli ularni o'qiy olmaydi. Rozilik qaytarib olinsa, surat va barcha videolar o'chiriladi. Videolar 30 kundan keyin avtomatik o'chiriladi. `uz` regionidagi tenantlar uchun xorijiy provayder `AVATAR_ALLOW_CROSS_BORDER=1` (yurist xulosasidan keyin) yoqilmaguncha bloklanadi.
+
+> Videolar hozir Postgres'da saqlanadi. Hajm oshganda ularni S3 bilan mos obyekt xotirasiga ko'chirish kerak.
 
 ### White-label
 
@@ -201,9 +214,13 @@ Sukut bo'yicha worker API jarayonining ichida ishlaydi. Yuklama oshsa: `RUN_WORK
 
 > Yetkazish kafolati "kamida bir marta": worker javob yuborgandan keyin, vazifani yopishdan oldin qulasa, foydalanuvchi javobni ikki marta olishi mumkin.
 
-### Keyingi qadamlar (v1–v2, `docs/02-mahsulot-prd.md`)
+### Keyingi qadamlar: prod'ga tayyorlash
 
-- Video-avatar.
+Mahsulot ro'yxatidagi (v1–v2, `docs/02-mahsulot-prd.md`) barcha funksiyalar kodda bor. Ishga tushirishdan oldin:
+- **Integratsiyalarni haqiqiy kalitlar bilan sinash.** Claude, ElevenLabs, D-ID, Payme/Click sandbox va Meta App Review hozircha faqat soxta servislar bilan testlangan.
+- **Mahalliy provayderlar.** Biometrik ma'lumot (ovoz, yuz) uchun O'zbekistonda joylashgan TTS va avatar provayderi kerak (`VoiceCloner`, `TalkingAvatar` interfeyslari tayyor), aks holda yurist xulosasi talab qilinadi.
+- **Infratuzilma:** fayl va videolar uchun obyekt xotira; katalog reytingi uchun materialized view; monitoring va alertlar; yuklama testi.
+- **Huquqiy:** agentlik shartnomasi, oferta, shaxsiy ma'lumotlar reyestri (`docs/09`).
 
 ## Moliyaviy model
 

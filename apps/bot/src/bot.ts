@@ -13,6 +13,8 @@ export interface BotConfig {
   stt?: SpeechToText;
   /** Egasining ovozida javob (rozilik va kvota VoiceService ichida tekshiriladi). */
   voice?: VoiceService;
+  /** Video-avatar: javob uchun video so'rovi (navbatga qo'yiladi, keyin shu chatga yuboriladi). */
+  avatar?: (req: { conversationId: string; reply: string; chatId: string }) => Promise<unknown>;
   /** Testlar uchun: bot ma'lumoti (getMe chaqirilmaydi) va fayl yuklash funksiyasi. */
   botInfo?: UserFromGetMe;
   fetchFn?: typeof fetch;
@@ -104,6 +106,7 @@ export function createBot(svc: CloneService, cfg: BotConfig): Bot {
           console.error("Ovozli javob tayyorlanmadi:", (err as Error).message);
         }
       }
+      if (cfg.avatar) await cfg.avatar({ conversationId: out.conversationId, reply: text, chatId: String(ctx.chat!.id) }).catch((err: Error) => console.error("Video so'rovi yaratilmadi:", err.message));
     }
     if (ownerChatId && (out.escalated || out.leadCaptured || out.mode !== "bot")) {
       await bot.api

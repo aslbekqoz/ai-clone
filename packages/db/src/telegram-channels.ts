@@ -128,6 +128,23 @@ export class TelegramChannels {
     }
   }
 
+  /** Video javob (video-avatar). Fayl multipart bilan yuklanadi; Telegram bot API chegarasi 50 MB. */
+  async sendVideo(token: string, chatId: string, video: Uint8Array, caption: string): Promise<void> {
+    const form = new FormData();
+    form.set("chat_id", chatId);
+    form.set("caption", caption);
+    form.set("supports_streaming", "true");
+    form.set("video", new Blob([new Uint8Array(video)], { type: "video/mp4" }), "javob.mp4");
+    let res: Response;
+    try {
+      res = await this.fetchFn(`https://api.telegram.org/bot${token}/sendVideo`, { method: "POST", body: form, signal: AbortSignal.timeout(60_000) });
+    } catch {
+      throw new TelegramConnectError("Telegram API'ga ulanib bo'lmadi", 502);
+    }
+    const data = (await res.json().catch(() => ({}))) as { ok?: boolean; description?: string };
+    if (!data.ok) throw new TelegramConnectError(`Telegram: ${data.description ?? res.status}`, 502);
+  }
+
   /** Dashboard uchun: token va sirsiz ma'lumot (RLS bilan). */
   async status(tenantId: string, cloneId: string): Promise<{ botUsername: string; connectedAt: Date } | null> {
     return withTenant(this.db, tenantId, async (tx) => {

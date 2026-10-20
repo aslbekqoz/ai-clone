@@ -130,6 +130,8 @@ export interface WorkerOptions {
   onError?: (job: Job, err: unknown, outcome: "retry" | "failed") => void;
   /** Tugagan vazifalarni tozalash oralig'i; 0 — o'chiq. */
   cleanupEveryMs?: number;
+  /** Tozalash paytida qo'shimcha ish (masalan, eski videolarni o'chirish). */
+  onCleanup?: () => Promise<unknown>;
 }
 
 /** Navbatdan vazifalarni olib bajaradi. start() — fon tsikli, drain() — testlar uchun: navbat bo'shaguncha. */
@@ -202,7 +204,7 @@ export class JobWorker {
     this.loops = Array.from({ length: this.opts.concurrency ?? 4 }, loop);
     const every = this.opts.cleanupEveryMs ?? 3600_000;
     if (every > 0) {
-      this.cleanupTimer = setInterval(() => void this.queue.cleanup().catch((err) => console.error("Navbatni tozalab bo'lmadi", err)), every);
+      this.cleanupTimer = setInterval(() => void Promise.all([this.queue.cleanup(), this.opts.onCleanup?.()]).catch((err) => console.error("Navbatni tozalab bo'lmadi", err)), every);
       this.cleanupTimer.unref();
     }
   }

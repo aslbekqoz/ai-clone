@@ -1,6 +1,7 @@
-import { AnthropicProvider, ClaudeOcr, DEFAULT_POLICY, ElevenLabsStt, ElevenLabsVoice, HashingEmbedder, LLMRouter, MockProvider, TeiEmbedder, TeiReranker, mockPolicy, type DocumentOcr, type Embedder, type SpeechToText } from "@ai-clone/core";
+import { AnthropicProvider, ClaudeOcr, DEFAULT_POLICY, DIdAvatar, ElevenLabsStt, ElevenLabsVoice, HashingEmbedder, LLMRouter, MockProvider, TeiEmbedder, TeiReranker, mockPolicy, type DocumentOcr, type Embedder, type SpeechToText } from "@ai-clone/core";
 import { BillingService, billingConfigFromEnv } from "./billing.js";
 import { parseSecretKey } from "./crypto.js";
+import { AvatarService } from "./avatar.js";
 import { JobQueue } from "./jobs.js";
 import { MarketplaceService } from "./marketplace.js";
 import { WhiteLabelService } from "./white-label.js";
@@ -31,6 +32,8 @@ export interface Runtime {
   marketplace: MarketplaceService;
   /** Brending va o'z domeni (Business tarifi). CUSTOM_DOMAIN_TARGET — mijoz CNAME qiladigan manzil. */
   whiteLabel: WhiteLabelService;
+  /** Video-avatar (DID_API_KEY bo'lsa). UZ tenantlari uchun AVATAR_ALLOW_CROSS_BORDER=1 kerak. */
+  avatar: AvatarService;
   /** Claude ulanganda — skanerlangan PDF va rasmlar uchun OCR. */
   ocr: DocumentOcr | null;
   /** Fon vazifalari navbati (Postgres). JOBS=0 bo'lsa API ishni so'rov ichida bajaradi. */
@@ -71,7 +74,8 @@ export function createRuntime(env: NodeJS.ProcessEnv = process.env): Runtime {
   const ocr = env.ANTHROPIC_API_KEY ? new ClaudeOcr({ apiKey: env.ANTHROPIC_API_KEY }, env.OCR_MODEL ?? "claude-opus-5-5") : null;
   const jobs = env.JOBS === "0" ? null : new JobQueue(db);
   const marketplace = new MarketplaceService(db);
+  const avatar = new AvatarService(db, env.DID_API_KEY ? new DIdAvatar(env.DID_API_KEY) : null, voice, { allowCrossBorder: env.AVATAR_ALLOW_CROSS_BORDER === "1" });
   const platformHosts = ["aiclone.uz", ...(env.PUBLIC_BASE_URL ? [new URL(env.PUBLIC_BASE_URL).hostname] : [])];
   const whiteLabel = new WhiteLabelService(db, { platformHosts, cnameTarget: env.CUSTOM_DOMAIN_TARGET ?? null });
-  return { db, service, telegram, meta, voice, monetization, marketplace, whiteLabel, ocr, jobs, billing, llm, embedder, stt };
+  return { db, service, telegram, meta, voice, monetization, marketplace, whiteLabel, avatar, ocr, jobs, billing, llm, embedder, stt };
 }

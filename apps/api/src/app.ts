@@ -14,6 +14,7 @@ import {
 } from "@ai-clone/core";
 import { createWebhookDispatcher } from "@ai-clone/bot";
 import {
+  AvatarError,
   CATEGORIES,
   MarketplaceError,
   MetaConnectError,
@@ -22,6 +23,7 @@ import {
   TelegramConnectError,
   VoiceError,
   WhiteLabelError,
+  type AvatarService,
   type BillingService,
   type CloneService,
   type Category,
@@ -33,7 +35,7 @@ import {
   type VoiceService,
   type WhiteLabelService,
 } from "@ai-clone/db";
-import { QUEUES, telegramGroupKey } from "./jobs.js";
+import { QUEUES, telegramGroupKey, type AvatarRequest } from "./jobs.js";
 import { processMetaInbound } from "./meta-webhook.js";
 import type { ApiClientOptions } from "grammy";
 import type { Update } from "grammy/types";
@@ -65,6 +67,8 @@ export interface AppConfig {
   marketplace?: MarketplaceService | null;
   /** Brending va o'z domeni. */
   whiteLabel?: WhiteLabelService | null;
+  /** Video-avatar: sozlash va javob uchun video so'rovi (navbat orqali). */
+  avatar?: { service: AvatarService; request: ((req: AvatarRequest) => Promise<string | null>) | null } | null;
   /** Skanerlangan PDF va rasmlar uchun. */
   ocr?: DocumentOcr | null;
   /**
@@ -151,6 +155,7 @@ const schemas = {
       hidePoweredBy: z.boolean(),
     })
     .partial(),
+  avatarMode: z.object({ mode: z.enum(["off", "always"]) }),
   domain: z.object({ domain: z.string().min(4).max(253) }),
   feedback: z.object({ rating: z.union([z.literal(1), z.literal(-1)]), correction: z.string().max(4000).optional() }),
 };
@@ -171,7 +176,7 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
   app.onError((err, c) => {
     if (err instanceof HTTPException) return c.json({ error: err.message }, err.status);
     if (err instanceof PaymentNotConfiguredError) return c.json({ error: err.message }, 503);
-    if (err instanceof TelegramConnectError || err instanceof MetaConnectError || err instanceof VoiceError || err instanceof MonetizationError || err instanceof MarketplaceError || err instanceof WhiteLabelError) return c.json({ error: err.message }, err.status);
+    if (err instanceof TelegramConnectError || err instanceof MetaConnectError || err instanceof VoiceError || err instanceof MonetizationError || err instanceof MarketplaceError || err instanceof WhiteLabelError || err instanceof AvatarError) return c.json({ error: err.message }, err.status);
     if (err.message.includes("topilmadi")) return c.json({ error: err.message }, 404);
     if ((err as { code?: string }).code === "23505") return c.json({ error: "Bunday yozuv allaqachon mavjud" }, 409);
     if ((err as { code?: string }).code === "22P02") return c.json({ error: "Topilmadi" }, 404);
@@ -451,6 +456,26 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
     if (!(f instanceof File)) throw new HTTPException(422, { message: `${fallback} fayli kerak` });
     return { data: new Uint8Array(await f.arrayBuffer()), filename: f.name || `${fallback}.webm`, mimeType: f.type || "audio/webm" };
   };
+  const avatarOr503 = () => {
+    if (!cfg.avatar) throw new HTTPException(503, { message: "Video-avatar yoqilmagan" });
+    return cfg.avatar.service;
+  };
+  v1.get("/clones/:id/avatar", async (c) => c.json(await avatarOr503().status(t(c), c.req.param("id"))));
+  v1.post("/clones/:id/avatar", async (c) => {
+    await cloneOr404(c);
+    const form = await c.req.parseBody();
+    if (!(form.photo instanceof File)) throw new HTTPException(422, { message: "photo maydoni kerak (multipart/form-data)" });
+    if (typeof form.signature !== "string") throw new HTTPException(422, { message: "Rozilik uchun to'liq ismingizni yozing" });
+    const ip = c.req.header("x-forwarded-for")?.split(",")[0]?.trim();
+    await avatarOr503().enroll(t(c), c.req.param("id"), { photo: new Uint8Array(await form.photo.arrayBuffer()), signature: form.signature, ...(ip ? { ip } : {}) });
+    return c.json(await avatarOr503().status(t(c), c.req.param("id")), 201);
+  });
+  v1.patch("/clones/:id/avatar", async (c) => {
+    await avatarOr503().setMode(t(c), c.req.param("id"), (await body(c, schemas.avatarMode)).mode);
+    return c.json(await avatarOr503().status(t(c), c.req.param("id")));
+  });
+  v1.delete("/clones/:id/avatar", async (c) => c.json({ ok: await avatarOr503().revoke(t(c), c.req.param("id")) }));
+
   v1.get("/clones/:id/voice", async (c) => {
     await cloneOr404(c);
     return c.json(await voiceOr503().status(t(c), c.req.param("id")));
@@ -564,7 +589,17 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
 
   // --- Telegram webhook: har bir klonning boti uchun alohida manzil va sir ---
   const dispatch = cfg.telegram
-    ? createWebhookDispatcher(svc, cfg.telegram, { stt: cfg.stt ?? null, voice: cfg.voice ?? null, ...(cfg.telegramClient ? { client: cfg.telegramClient } : {}) })
+    ? createWebhookDispatcher(svc, cfg.telegram, {
+        stt: cfg.stt ?? null,
+        voice: cfg.voice ?? null,
+        ...(cfg.telegramClient ? { client: cfg.telegramClient } : {}),
+        ...(cfg.avatar?.request
+          ? {
+              avatar: (bot, req) =>
+                cfg.avatar!.request!({ tenantId: bot.tenantId, cloneId: bot.cloneId, conversationId: req.conversationId, reply: req.reply, channel: "telegram", recipient: req.chatId, botId: bot.id }),
+            }
+          : {}),
+      })
     : null;
   app.post("/telegram/:id", async (c) => {
     if (!dispatch) return c.json({ error: "Telegram sozlanmagan" }, 404);
@@ -642,7 +677,22 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
     if (!target) throw new HTTPException(404, { message: "Klon topilmadi" });
     const { visitorId, message } = await body(c, schemas.publicChat);
     const out = await svc.chat(target.tenantId, target.cloneId, { channel: "web", externalId: visitorId, message });
-    return c.json({ reply: out.reply, citations: out.citations, messageId: out.messageId, humanMode: out.mode !== "bot", ...(out.paywall ? { offers: out.paywall.offers } : {}) });
+    // Video qo'shimcha: so'rov yaratilmasa ham matnli javob baribir qaytadi.
+    const videoId =
+      out.reply && !out.paywall && cfg.avatar?.request
+        ? await cfg.avatar.request({ tenantId: target.tenantId, cloneId: target.cloneId, conversationId: out.conversationId, reply: out.reply, channel: "web", recipient: visitorId }).catch((err: Error) => {
+            console.error("Video so'rovi yaratilmadi:", err.message);
+            return null;
+          })
+        : null;
+    return c.json({
+      reply: out.reply,
+      citations: out.citations,
+      messageId: out.messageId,
+      humanMode: out.mode !== "bot",
+      ...(out.paywall ? { offers: out.paywall.offers } : {}),
+      ...(videoId ? { video: { id: videoId } } : {}),
+    });
   });
   app.post("/public/:slug/feedback", async (c) => {
     const target = await svc.resolveSlug(c.req.param("slug"));
@@ -675,6 +725,20 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
     // Bitta ortiqcha yozuv — "Keyingi" havolasini ko'rsatish kerakligini bilish uchun.
     const cards = await cfg.marketplace.search({ ...(q ? { q } : {}), ...(cat ? { category: cat } : {}), offset: (page - 1) * PAGE_SIZE, limit: PAGE_SIZE + 1 });
     return c.html(exploreHtml(cards.slice(0, PAGE_SIZE), { q, category: cat, page, hasMore: cards.length > PAGE_SIZE }), 200, { "cache-control": "public, max-age=60" });
+  });
+  const visitorVideo = async (c: Context) => {
+    const target = await svc.resolveSlug(c.req.param("slug")!);
+    const visitorId = c.req.query("visitorId") ?? "";
+    if (!target || !cfg.avatar || !/^[\w-]{8,64}$/.test(visitorId)) throw new HTTPException(404, { message: "Topilmadi" });
+    const v = await cfg.avatar.service.forVisitor(target.cloneId, c.req.param("id")!, visitorId);
+    if (!v) throw new HTTPException(404, { message: "Topilmadi" });
+    return v;
+  };
+  app.get("/public/:slug/video/:id", async (c) => c.json({ status: (await visitorVideo(c)).status }));
+  app.get("/public/:slug/video/:id/file", async (c) => {
+    const v = await visitorVideo(c);
+    if (!v.video) throw new HTTPException(404, { message: "Video hali tayyor emas" });
+    return c.body(new Uint8Array(v.video), 200, { "content-type": "video/mp4", "cache-control": "private, max-age=86400" });
   });
   app.get("/public/:slug/config", async (c) => {
     const target = await svc.resolveSlug(c.req.param("slug"));

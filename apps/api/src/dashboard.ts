@@ -266,7 +266,23 @@ async function viewVoice(view){let st;try{st=await api("/v1/clones/"+clone.id+"/
         if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error||"Xato");}
         player.src=URL.createObjectURL(await res.blob());player.style.display="block";player.play().catch(()=>{});})},"▶ Tinglash")),player),
     h("div",{class:"card"},h("h3",{},"Rozilikni qaytarib olish"),h("p",{class:"small muted"},"Ovoz provayderdan o'chiriladi, rozilik yozuvi tozalanadi, klon faqat matnda javob beradi."),
-      h("button",{class:"ghost",onclick:guard(async()=>{if(!confirm("Ovoz kloni butunlay o'chirilsinmi?"))return;await api("/v1/clones/"+clone.id+"/voice",{method:"DELETE"});toast("Ovoz o'chirildi");render();})},"Ovozni o'chirish"))));}
+      h("button",{class:"ghost",onclick:guard(async()=>{if(!confirm("Ovoz kloni butunlay o'chirilsinmi?"))return;await api("/v1/clones/"+clone.id+"/voice",{method:"DELETE"});toast("Ovoz o'chirildi");render();})},"Ovozni o'chirish"))));
+  await avatarCard(view);}
+
+async function avatarCard(view){let a;try{a=await api("/v1/clones/"+clone.id+"/avatar");}catch{return;}if(!a.available)return;
+  const card=h("div",{class:"card",style:"margin-top:16px"},h("h3",{},"Video-avatar"));view.append(card);
+  if(!a.secondsIncluded){card.append(h("p",{class:"small muted"},"Javoblarni sizning yuzingiz va ovozingizda qisqa video sifatida yuborish — Business tarifida."));return;}
+  if(!a.enrolled){const photo=h("input",{type:"file",accept:"image/jpeg,image/png",required:true}),sig=h("input",{required:true,placeholder:clone.persona.name});
+    card.append(h("p",{class:"small muted"},"Yuzingiz aniq ko'rinadigan, old tomondan olingan surat yuklang. Faqat o'zingizning suratingiz — boshqa shaxs yoki mashhur odam surati rad etiladi."),
+      h("form",{onsubmit:guard(async()=>{const fd=new FormData();fd.append("photo",photo.files[0]);fd.append("signature",sig.value);await api("/v1/clones/"+clone.id+"/avatar",{method:"POST",body:fd});toast("Avatar tayyor");render();})},
+        h("label",{},"Surat (JPG yoki PNG, 8 MB gacha)"),photo,
+        h("p",{class:"small",style:"margin-top:12px;padding:10px;border:1px solid var(--line);border-radius:10px"},a.consentText),
+        h("label",{},"Roziman — to'liq ismingiz"),sig,h("div",{style:"margin-top:12px"},h("button",{type:"submit"},"Rozilik berish va yuklash"))));return;}
+  const mode=h("select",{},h("option",{value:"off",selected:a.mode==="off"},"O'chiq"),h("option",{value:"always",selected:a.mode==="always"},"Qisqa javoblarga video (300 belgigacha)"));
+  card.append(h("p",{class:"small muted"},"Bu oy: "+Math.round(a.secondsUsed/60)+" / "+Math.round(a.secondsIncluded/60)+" daqiqa. Video vidjetda va ulangan Telegram botida, matnli javobdan keyin keladi."),
+    h("label",{},"Rejim"),mode,h("div",{class:"row",style:"margin-top:12px"},
+      h("button",{onclick:guard(async()=>{await patch("/v1/clones/"+clone.id+"/avatar",{mode:mode.value});toast("Saqlandi");})},"Saqlash"),
+      h("button",{class:"ghost",onclick:guard(async()=>{if(!confirm("Surat, rozilik va barcha videolar o'chirilsinmi?"))return;await api("/v1/clones/"+clone.id+"/avatar",{method:"DELETE"});toast("Avatar o'chirildi");render();})},"Rozilikni qaytarib olish")));}
 
 // --- Daromad (klon monetizatsiyasi) ---
 async function viewEarn(view){const m=await api("/v1/clones/"+clone.id+"/monetization");
