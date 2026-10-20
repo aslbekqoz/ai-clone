@@ -2,6 +2,7 @@ import { AnthropicProvider, ClaudeOcr, DEFAULT_POLICY, ElevenLabsStt, ElevenLabs
 import { BillingService, billingConfigFromEnv } from "./billing.js";
 import { parseSecretKey } from "./crypto.js";
 import { JobQueue } from "./jobs.js";
+import { MarketplaceService } from "./marketplace.js";
 import { createPool, type Db } from "./pool.js";
 import { MetaChannels } from "./meta-channels.js";
 import { MonetizationService } from "./monetization.js";
@@ -25,6 +26,8 @@ export interface Runtime {
   voice: VoiceService;
   /** PAYMENT_LINK_SECRET va PUBLIC_BASE_URL bo'lsa — obunachilar klonga pullik kirish oladi. */
   monetization: MonetizationService | null;
+  /** Ommaviy klonlar katalogi (/explore). */
+  marketplace: MarketplaceService;
   /** Claude ulanganda — skanerlangan PDF va rasmlar uchun OCR. */
   ocr: DocumentOcr | null;
   /** Fon vazifalari navbati (Postgres). JOBS=0 bo'lsa API ishni so'rov ichida bajaradi. */
@@ -64,5 +67,6 @@ export function createRuntime(env: NodeJS.ProcessEnv = process.env): Runtime {
   const voice = new VoiceService(db, cloner, stt, { allowCrossBorder: env.VOICE_ALLOW_CROSS_BORDER === "1" });
   const ocr = env.ANTHROPIC_API_KEY ? new ClaudeOcr({ apiKey: env.ANTHROPIC_API_KEY }, env.OCR_MODEL ?? "claude-opus-5-5") : null;
   const jobs = env.JOBS === "0" ? null : new JobQueue(db);
-  return { db, service, telegram, meta, voice, monetization, ocr, jobs, billing, llm, embedder, stt };
+  const marketplace = new MarketplaceService(db);
+  return { db, service, telegram, meta, voice, monetization, marketplace, ocr, jobs, billing, llm, embedder, stt };
 }

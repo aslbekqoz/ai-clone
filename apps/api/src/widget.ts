@@ -24,6 +24,9 @@ const STYLES = `
 .acw-fab{position:fixed;right:20px;bottom:20px;width:56px;height:56px;border-radius:50%;border:0;background:var(--ink);color:var(--bone);font-size:24px;cursor:pointer;box-shadow:0 6px 24px rgba(0,0,0,.18);z-index:2147483000}
 .acw-float{position:fixed;right:20px;bottom:88px;width:min(380px,calc(100vw - 32px));height:min(560px,calc(100vh - 120px));z-index:2147483000;box-shadow:0 12px 40px rgba(0,0,0,.18)}
 .acw-hidden{display:none}
+.acw-rate{display:flex;gap:4px;margin-top:6px}
+.acw-rate button{border:1px solid var(--line);background:transparent;border-radius:8px;padding:1px 8px;font-size:13px;cursor:pointer}
+.acw-rate button[aria-pressed=true]{background:var(--ink);border-color:var(--ink)}
 `;
 
 /** Vidjet skripti. `base` — API manzili. Hech qanday tashqi kutubxona yo'q. */
@@ -46,18 +49,21 @@ const target=mount&&document.querySelector(mount);
 if(target){panel.style.height="100%";target.appendChild(root);}else{
   panel.classList.add("acw-float","acw-hidden");const fab=document.createElement("button");fab.className="acw-fab";fab.setAttribute("aria-label","Chatni ochish");fab.textContent="💬";
   fab.onclick=()=>{panel.classList.toggle("acw-hidden");if(!panel.classList.contains("acw-hidden"))input.focus();};root.appendChild(fab);document.body.appendChild(root);}
-function add(text,cls,citations,offers){if(offers&&offers.length)text=text.split("\\n").filter(l=>!/^• .*https?:\\/\\//.test(l)).join("\\n");const m=document.createElement("div");m.className="acw-msg "+cls;m.textContent=text.replace(/\\s*\\[S\\d+(?:,\\s*S\\d+)*\\]/g,"");
+function rate(m,id){const r=document.createElement("div");r.className="acw-rate";[[1,"👍"],[-1,"👎"]].forEach(([v,l])=>{const b=document.createElement("button");b.type="button";b.textContent=l;b.setAttribute("aria-label",v>0?"Foydali":"Foydasiz");b.setAttribute("aria-pressed","false");
+  b.onclick=async()=>{try{const x=await fetch(BASE+"/public/"+encodeURIComponent(slug)+"/feedback",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({visitorId:vid,messageId:id,rating:v})});if(x.ok)r.querySelectorAll("button").forEach(o=>o.setAttribute("aria-pressed",String(o===b)));}catch{}};r.appendChild(b);});m.appendChild(r);}
+function add(text,cls,citations,offers,messageId){if(offers&&offers.length)text=text.split("\\n").filter(l=>!/^• .*https?:\\/\\//.test(l)).join("\\n");const m=document.createElement("div");m.className="acw-msg "+cls;m.textContent=text.replace(/\\s*\\[S\\d+(?:,\\s*S\\d+)*\\]/g,"");
   if(citations&&citations.length){const s=document.createElement("span");s.className="acw-src";s.append("Manba: ");
     citations.forEach((c,i)=>{if(i)s.append(", ");if(c.url&&/^https?:/.test(c.url)){const a=document.createElement("a");a.href=c.url;a.target="_blank";a.rel="noopener";a.textContent=c.title;s.append(a);}else s.append(c.title);});m.appendChild(s);}
   if(offers&&offers.length){const o=document.createElement("div");o.className="acw-offers";
     offers.forEach(x=>{if(!/^https?:/.test(x.url))return;const a=document.createElement("a");a.href=x.url;a.target="_blank";a.rel="noopener";a.textContent=x.title+" — "+Number(x.priceUzs).toLocaleString("ru-RU")+" so'm";o.appendChild(a);});m.appendChild(o);}
+  if(messageId&&!(offers&&offers.length))rate(m,messageId);
   log.appendChild(m);log.scrollTop=log.scrollHeight;}
 let since=new Date().toISOString(),poll=null;
 function startPolling(){if(poll)return;poll=setInterval(async()=>{try{const r=await fetch(BASE+"/public/"+encodeURIComponent(slug)+"/updates?visitorId="+vid+"&after="+encodeURIComponent(since));
   if(!r.ok)return;for(const m of await r.json()){add(m.text,"acw-owner");since=m.at;}}catch{}},5000);}
 form.addEventListener("submit",async(e)=>{e.preventDefault();const text=input.value.trim();if(!text)return;input.value="";add(text,"acw-user");btn.disabled=true;
   try{const r=await fetch(BASE+"/public/"+encodeURIComponent(slug)+"/chat",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({visitorId:vid,message:text})});
-    const d=await r.json();if(!r.ok)add(d.error||"Xatolik yuz berdi","acw-bot");else if(d.reply)add(d.reply,"acw-bot",d.citations,d.offers);else{add("Xabaringiz egasiga yetkazildi — u shu yerda javob beradi.","acw-bot");}
+    const d=await r.json();if(!r.ok)add(d.error||"Xatolik yuz berdi","acw-bot");else if(d.reply)add(d.reply,"acw-bot",d.citations,d.offers,d.messageId);else{add("Xabaringiz egasiga yetkazildi — u shu yerda javob beradi.","acw-bot");}
     if(d.humanMode)startPolling();}
   catch{add("Tarmoq xatosi, qayta urinib ko'ring.","acw-bot");}finally{btn.disabled=false;input.focus();}});
 })();`;
@@ -67,8 +73,18 @@ function esc(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 }
 
+const REPORT_FORM = `<details><summary>Shikoyat qilish</summary><form id="report"><select name="reason" aria-label="Sabab"><option value="impersonation">Boshqa shaxs nomidan</option><option value="harmful">Zararli maslahat</option><option value="spam">Spam yoki aldov</option><option value="other">Boshqa</option></select><input name="details" maxlength="500" placeholder="Izoh (ixtiyoriy)"><button type="submit">Yuborish</button></form></details>`;
+
+/** Shikoyat: vidjet bilan bir xil tashrifchi ID'si (localStorage) — bitta tashrifchi bitta shikoyat. */
+function reportScript(slug: string): string {
+  return `(()=>{const f=document.getElementById("report");if(!f)return;f.addEventListener("submit",async(e)=>{e.preventDefault();let vid;try{vid=localStorage.getItem("aiclone:"+${JSON.stringify(slug)});}catch{}
+if(!vid){vid=crypto.randomUUID();try{localStorage.setItem("aiclone:"+${JSON.stringify(slug)},vid);}catch{}}
+const r=await fetch("/public/"+encodeURIComponent(${JSON.stringify(slug)})+"/report",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({visitorId:vid,reason:f.reason.value,details:f.details.value})}).catch(()=>null);
+f.replaceWith(document.createTextNode(r&&r.ok?"Rahmat, shikoyat moderatorga yuborildi.":"Yuborib bo'lmadi, keyinroq urinib ko'ring."));});})();`.replace(/<\//g, "<\\/");
+}
+
 /** Ommaviy klon sahifasi — blogerlar Telegram/Instagram bio'siga qo'yadigan havola. */
-export function clonePageHtml(slug: string, name: string, bio: string, base: string): string {
+export function clonePageHtml(slug: string, name: string, bio: string, base: string, opts: { listed?: boolean } = {}): string {
   return `<!doctype html>
 <html lang="uz"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(name)} — AI-klon</title><meta name="description" content="${esc(bio.slice(0, 160))}">
@@ -81,13 +97,18 @@ p{margin:0;color:var(--muted)}
 #chat{flex:1;min-height:420px;display:flex}
 #chat>.acw-root{flex:1;display:flex;min-width:0}#chat .acw-panel{flex:1}
 footer{font-size:13px;color:var(--muted)}footer a{color:inherit}
+.back{font-size:14px;color:var(--muted)}
+details{font-size:13px;color:var(--muted)}details form{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}details select,details input,details button{font:inherit;padding:6px 8px;border:1px solid #d9d0bf;border-radius:8px;background:#fff;color:var(--ink)}details input{flex:1;min-width:0}
 </style></head>
 <body><main>
+${opts.listed ? `<a class="back" href="/explore">← Katalog</a>` : ""}
 <header><h1>${esc(name)}</h1><p>${esc(bio)}</p></header>
 <div id="chat"></div>
 <footer>🤖 Bu ${esc(name)}ning AI-kloni: javoblar uning materiallari asosida AI tomonidan yaratiladi. <a href="https://aiclone.uz">O'z kloningizni yarating →</a></footer>
+${opts.listed ? REPORT_FORM : ""}
 </main>
 <script src="${esc(base)}/widget.js" data-clone="${esc(slug)}" data-mount="#chat" data-title="${esc(name)} bilan suhbat"></script>
+${opts.listed ? `<script>${reportScript(slug)}</script>` : ""}
 </body></html>`;
 }
 

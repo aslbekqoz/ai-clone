@@ -462,6 +462,24 @@ export class CloneService {
     return { verifiedAnswerCreated: true };
   }
 
+  /** Obunachining 👍/👎 bahosi (vidjet). Faqat o'z suhbatidagi klon javobiga; qayta bosilsa — o'zgartiriladi. */
+  async visitorFeedback(tenantId: string, cloneId: string, channel: Channel, externalId: string, messageId: string, rating: 1 | -1): Promise<boolean> {
+    return withTenant(this.db, tenantId, async (tx) => {
+      const { rows } = await tx.query(
+        `SELECT 1 FROM messages m JOIN conversations cv ON cv.id = m.conversation_id JOIN end_users u ON u.id = cv.end_user_id
+          WHERE m.id = $1 AND m.role = 'assistant' AND cv.clone_id = $2 AND u.channel = $3 AND u.external_id = $4`,
+        [messageId, cloneId, channel, externalId],
+      );
+      if (!rows.length) return false;
+      await tx.query(
+        `INSERT INTO feedback (tenant_id, message_id, by_role, rating) VALUES ($1, $2, 'end_user', $3)
+         ON CONFLICT (message_id) WHERE by_role = 'end_user' DO UPDATE SET rating = EXCLUDED.rating, created_at = now()`,
+        [tenantId, messageId, rating],
+      );
+      return true;
+    });
+  }
+
   async listConversations(tenantId: string, cloneId: string, filter?: "escalated") {
     return withTenant(this.db, tenantId, async (tx) => {
       const { rows } = await tx.query(

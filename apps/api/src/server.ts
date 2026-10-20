@@ -19,6 +19,7 @@ const app = createApp(rt.service, {
   meta: rt.meta,
   voice: rt.voice,
   monetization: rt.monetization,
+  marketplace: rt.marketplace,
   ocr: rt.ocr,
   jobs: rt.jobs ? { queue: rt.jobs, ...(worker ? { notify: () => worker.notify() } : {}) } : null,
 }, rt.billing);

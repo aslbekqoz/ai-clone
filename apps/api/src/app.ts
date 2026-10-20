@@ -14,6 +14,8 @@ import {
 } from "@ai-clone/core";
 import { createWebhookDispatcher } from "@ai-clone/bot";
 import {
+  CATEGORIES,
+  MarketplaceError,
   MetaConnectError,
   MonetizationError,
   PaymentNotConfiguredError,
@@ -21,7 +23,9 @@ import {
   VoiceError,
   type BillingService,
   type CloneService,
+  type Category,
   type JobQueue,
+  type MarketplaceService,
   type MetaChannels,
   type MonetizationService,
   type TelegramChannels,
@@ -38,6 +42,7 @@ import { z } from "zod";
 import { fetchUrlText } from "./fetch-url.js";
 import { RateLimiter } from "./rate-limit.js";
 import { dashboardHtml } from "./dashboard.js";
+import { PAGE_SIZE, exploreHtml } from "./explore.js";
 import { clonePageHtml, payPageHtml, widgetJs } from "./widget.js";
 
 export interface AppConfig {
@@ -54,6 +59,8 @@ export interface AppConfig {
   meta?: { channels: MetaChannels; appSecret: string; verifyToken: string } | null;
   voice?: VoiceService | null;
   monetization?: MonetizationService | null;
+  /** Ommaviy katalog (/explore). */
+  marketplace?: MarketplaceService | null;
   /** Skanerlangan PDF va rasmlar uchun. */
   ocr?: DocumentOcr | null;
   /**
@@ -125,6 +132,14 @@ const schemas = {
   instagram: z.object({ accessToken: z.string().min(20).max(1000) }),
   whatsapp: z.object({ phoneNumberId: z.string().regex(/^\d{5,20}$/), accessToken: z.string().min(20).max(1000) }),
   telegramToken: z.object({ token: z.string().min(10).max(100) }),
+  marketplace: z.object({
+    listed: z.boolean().optional(),
+    category: z.enum(Object.keys(CATEGORIES) as [Category, ...Category[]]).optional(),
+    tagline: z.string().max(160).optional(),
+  }),
+  visitorFeedback: z.object({ visitorId: z.string().regex(/^[\w-]{8,64}$/), messageId: z.string().uuid(), rating: z.union([z.literal(1), z.literal(-1)]) }),
+  report: z.object({ visitorId: z.string().regex(/^[\w-]{8,64}$/), reason: z.enum(["impersonation", "harmful", "spam", "other"]), details: z.string().max(500).default("") }),
+  moderation: z.object({ status: z.enum(["ok", "blocked"]), reason: z.string().max(500).optional() }),
   feedback: z.object({ rating: z.union([z.literal(1), z.literal(-1)]), correction: z.string().max(4000).optional() }),
 };
 
@@ -144,7 +159,7 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
   app.onError((err, c) => {
     if (err instanceof HTTPException) return c.json({ error: err.message }, err.status);
     if (err instanceof PaymentNotConfiguredError) return c.json({ error: err.message }, 503);
-    if (err instanceof TelegramConnectError || err instanceof MetaConnectError || err instanceof VoiceError || err instanceof MonetizationError) return c.json({ error: err.message }, err.status);
+    if (err instanceof TelegramConnectError || err instanceof MetaConnectError || err instanceof VoiceError || err instanceof MonetizationError || err instanceof MarketplaceError) return c.json({ error: err.message }, err.status);
     if (err.message.includes("topilmadi")) return c.json({ error: err.message }, 404);
     if ((err as { code?: string }).code === "23505") return c.json({ error: "Bunday yozuv allaqachon mavjud" }, 409);
     if ((err as { code?: string }).code === "22P02") return c.json({ error: "Topilmadi" }, 404);
@@ -168,6 +183,21 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
     const p = await body(c, schemas.payout);
     await cfg.monetization.recordPayout(p.tenantId, p.amountUzs, p.reference);
     return c.json({ ok: true }, 201);
+  });
+
+  const marketplaceOr503 = () => {
+    if (!cfg.marketplace) throw new HTTPException(503, { message: "Katalog yoqilmagan" });
+    return cfg.marketplace;
+  };
+  app.get("/admin/reports", async (c) => {
+    if (!cfg.adminToken || c.req.header("x-admin-token") !== cfg.adminToken) throw new HTTPException(401, { message: "Admin token noto'g'ri" });
+    return c.json(await marketplaceOr503().openReports());
+  });
+  app.post("/admin/clones/:id/moderation", async (c) => {
+    if (!cfg.adminToken || c.req.header("x-admin-token") !== cfg.adminToken) throw new HTTPException(401, { message: "Admin token noto'g'ri" });
+    const m = await body(c, schemas.moderation);
+    if (!(await marketplaceOr503().moderate(c.req.param("id"), m.status, m.reason))) throw new HTTPException(404, { message: "Klon topilmadi" });
+    return c.json({ ok: true });
   });
 
   // --- Tenant API (Authorization: Bearer <api key>) ---
@@ -457,6 +487,15 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
     return c.json(await billingOr503().createOrder(t(c), o.plan, o.months, o.provider), 201);
   });
 
+  v1.get("/clones/:id/marketplace", async (c) => {
+    if (!cfg.marketplace) return c.json({ available: false });
+    return c.json({ available: true, categories: CATEGORIES, ...(await cfg.marketplace.settings(t(c), c.req.param("id"))) });
+  });
+  v1.patch("/clones/:id/marketplace", async (c) => {
+    const m = await body(c, schemas.marketplace);
+    return c.json(await marketplaceOr503().update(t(c), c.req.param("id"), m));
+  });
+
   v1.get("/jobs/:jobId", async (c) => {
     const job = cfg.jobs ? await cfg.jobs.queue.get(t(c), c.req.param("jobId")) : null;
     if (!job) throw new HTTPException(404, { message: "Vazifa topilmadi" });
@@ -547,6 +586,38 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
     const out = await svc.chat(target.tenantId, target.cloneId, { channel: "web", externalId: visitorId, message });
     return c.json({ reply: out.reply, citations: out.citations, messageId: out.messageId, humanMode: out.mode !== "bot", ...(out.paywall ? { offers: out.paywall.offers } : {}) });
   });
+  app.post("/public/:slug/feedback", async (c) => {
+    const target = await svc.resolveSlug(c.req.param("slug"));
+    if (!target) throw new HTTPException(404, { message: "Klon topilmadi" });
+    const f = await body(c, schemas.visitorFeedback);
+    if (!(await svc.visitorFeedback(target.tenantId, target.cloneId, "web", f.visitorId, f.messageId, f.rating))) throw new HTTPException(404, { message: "Xabar topilmadi" });
+    return c.json({ ok: true });
+  });
+  app.post("/public/:slug/report", async (c) => {
+    const ip = c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
+    if (!publicLimiter.allow(`report:${ip}`)) throw new HTTPException(429, { message: "Juda ko'p so'rov, birozdan keyin urinib ko'ring" });
+    const target = await svc.resolveSlug(c.req.param("slug"));
+    if (!target) throw new HTTPException(404, { message: "Klon topilmadi" });
+    const r = await body(c, schemas.report);
+    return c.json(await marketplaceOr503().report(target.cloneId, r.visitorId, r.reason, r.details), 201);
+  });
+  app.get("/public/marketplace", async (c) => {
+    const category = c.req.query("category");
+    const cat = category && category in CATEGORIES ? (category as Category) : undefined;
+    const offset = Math.max(0, Number(c.req.query("offset")) || 0);
+    const cards = await marketplaceOr503().search({ ...(c.req.query("q") ? { q: c.req.query("q")! } : {}), ...(cat ? { category: cat } : {}), offset, limit: PAGE_SIZE });
+    return c.json(cards, 200, { "cache-control": "public, max-age=60" });
+  });
+  app.get("/explore", async (c) => {
+    if (!cfg.marketplace) return c.text("Katalog yoqilmagan", 404);
+    const q = (c.req.query("q") ?? "").slice(0, 100);
+    const category = c.req.query("category");
+    const cat = category && category in CATEGORIES ? (category as Category) : null;
+    const page = Math.min(1000, Math.max(1, Number(c.req.query("page")) || 1));
+    // Bitta ortiqcha yozuv — "Keyingi" havolasini ko'rsatish kerakligini bilish uchun.
+    const cards = await cfg.marketplace.search({ ...(q ? { q } : {}), ...(cat ? { category: cat } : {}), offset: (page - 1) * PAGE_SIZE, limit: PAGE_SIZE + 1 });
+    return c.html(exploreHtml(cards.slice(0, PAGE_SIZE), { q, category: cat, page, hasMore: cards.length > PAGE_SIZE }), 200, { "cache-control": "public, max-age=60" });
+  });
   app.get("/public/:slug/updates", async (c) => {
     const target = await svc.resolveSlug(c.req.param("slug"));
     const visitorId = c.req.query("visitorId") ?? "";
@@ -572,7 +643,8 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
     const target = await svc.resolveSlug(c.req.param("slug"));
     if (!target) return c.text("Klon topilmadi", 404);
     const clone = await svc.getClone(target.tenantId, target.cloneId);
-    return c.html(clonePageHtml(clone!.slug, clone!.persona.name, clone!.persona.bio, cfg.publicBaseUrl ?? new URL(c.req.url).origin));
+    const listed = cfg.marketplace ? await cfg.marketplace.isListed(target.cloneId) : false;
+    return c.html(clonePageHtml(clone!.slug, clone!.persona.name, clone!.persona.bio, cfg.publicBaseUrl ?? new URL(c.req.url).origin, { listed }));
   });
 
   return app;

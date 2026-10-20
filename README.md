@@ -38,7 +38,7 @@ packages/core   AI yadro: o'zbek matnini normallashtirish (lotin/kirill), chunki
                 circuit breaker, xarajat hisobi), Claude adapteri, Telegram eksporti parseri
 packages/db     Postgres + pgvector sxemasi, har bir jadvalda RLS, bilim ombori, CloneService
                 (chat, lidlar, human takeover, tuzatish → tasdiqlangan javob, limitlar), fon vazifalari navbati
-apps/api        HTTP API (Hono), egasi dashboardi (/app), sayt vidjeti (/widget.js), ommaviy klon sahifasi (/c/<slug>), worker
+apps/api        HTTP API (Hono), egasi dashboardi (/app), sayt vidjeti (/widget.js), ommaviy klon sahifasi (/c/<slug>), katalog (/explore), worker
 apps/bot        Telegram bot (grammY): suhbat, ovozli xabarlar (STT), /forget, egasiga eskalatsiya, /reply /takeover /bot, kanal sinxroni /sync /unsync
 ```
 
@@ -66,7 +66,7 @@ Ikkalasi ham xato bersa, tizim qoidalar asosidagi tekshiruvga qaytadi. `TEI_RERA
 
 ```bash
 pnpm typecheck
-TEST_DATABASE_URL=postgres://aiclone:aiclone@localhost:5432/aiclone pnpm test   # 157 test: RLS, navbat, to'lovlar, monetizatsiya, ovoz, fayl, LLM qadamlari, Telegram, Instagram, WhatsApp
+TEST_DATABASE_URL=postgres://aiclone:aiclone@localhost:5432/aiclone pnpm test   # 166 test: RLS, navbat, katalog, to'lovlar, monetizatsiya, ovoz, fayl, LLM qadamlari, Telegram, Instagram, WhatsApp
 ```
 
 ### API qisqacha
@@ -92,6 +92,10 @@ TEST_DATABASE_URL=postgres://aiclone:aiclone@localhost:5432/aiclone pnpm test   
 | GET/POST/DELETE | `/v1/clones/:id/channels` · `/channels/instagram` · `/channels/whatsapp` | Instagram DM va WhatsApp Cloud API kanallarini ulash |
 | GET/POST/PATCH/DELETE | `/v1/clones/:id/voice` · `/voice/consent` · `/voice/preview` | Ovoz kloni: rozilik matni, yozib olish, rejim, eshitib ko'rish, qaytarib olish |
 | GET/PATCH | `/v1/clones/:id/monetization` · POST `/v1/clones/:id/products` · PATCH `/v1/products/:id` · GET `/v1/earnings` | Klon monetizatsiyasi: pullik kirish, mahsulotlar, daromad |
+| GET/PATCH | `/v1/clones/:id/marketplace` | Katalogga qo'yish: kategoriya, qisqa tavsif |
+| GET | `/explore` · `/public/marketplace?q=&category=` | Ommaviy katalog: HTML sahifa va JSON |
+| POST | `/public/:slug/feedback` · `/public/:slug/report` | Obunachi bahosi (👍/👎) va shikoyat |
+| GET/POST | `/admin/reports` · `/admin/clones/:id/moderation` (`x-admin-token`) | Shikoyatlar va moderatsiya |
 | GET | `/pay/:token` · `/pay/:token/{payme,click}` | Obunachi to'lov sahifasi (imzolangan havola) |
 | POST | `/admin/payouts` (`x-admin-token`) | Kreatorga to'lab berilgan summani qayd etish |
 | GET/POST | `/meta/webhook` | Meta webhooki: tasdiqlash (`hub.challenge`) va `X-Hub-Signature-256` imzosi bilan xabarlar |
@@ -124,6 +128,15 @@ Tarif obunalari so'mda: Creator 189 000, Pro 499 000, Business 1 490 000 so'm. Y
 Barcha `/v1` so'rovlari `Authorization: Bearer <api kalit>` sarlavhasini talab qiladi.
 
 > YouTube: avval subtitrlar olinadi (o'zbek → rus → ingliz). Subtitr bo'lmasa yoki YouTube server so'rovini bloklasa, audio STT orqali matnga aylantiriladi (`ELEVENLABS_API_KEY`).
+
+### Klonlar katalogi
+
+Egasi **Sozlamalar → Katalog** bo'limida kategoriya va qisqa tavsifni tanlab, klonni `/explore` katalogiga qo'yadi. Buning uchun kamida bitta bilim manbai kerak.
+- **Qidiruv:** ism, tavsif va bio bo'yicha, lotin va kirill yozuvida; 8 ta kategoriya bo'yicha filtr. Sahifa serverda chiziladi, shuning uchun JS'siz ishlaydi va qidiruv tizimlari indekslaydi.
+- **Reyting:** vidjetdagi 👍/👎 asosida (oxirgi 90 kun, kamida 5 ta baho). Saralash: Wilson quyi chegarasi (70%) + 30 kunlik suhbatlar soni (30%), shuning uchun 3 ta tasodifiy 👍 olgan yangi klon tepaga chiqib ketmaydi. Obunachi faqat o'z suhbatidagi javobni, har birini bir marta baholaydi.
+- **Moderatsiya:** katalogdagi klon sahifasida "Shikoyat qilish" bor (boshqa shaxs nomidan, zararli maslahat, spam). Admin shikoyatlarni `/admin/reports` da ko'radi va klonni bloklaydi. Bloklangan klon katalogdan yo'qoladi, lekin o'z havolasi orqali ishlashda davom etadi.
+
+> Katalog reytingi hozir har so'rovda hisoblanadi; klonlar minglab bo'lganda uni materialized view'ga ko'chirish kerak.
 
 ### OCR va Telegram kanali sinxroni
 
@@ -178,7 +191,7 @@ Sukut bo'yicha worker API jarayonining ichida ishlaydi. Yuklama oshsa: `RUN_WORK
 
 ### Keyingi qadamlar (v1–v2, `docs/02-mahsulot-prd.md`)
 
-- Video-avatar, klonlar marketpleysi, white-label.
+- Video-avatar, white-label.
 
 ## Moliyaviy model
 

@@ -319,6 +319,18 @@ async function viewSettings(view){const p=clone.persona;
     h("h3",{},"Klon sozlamalari"),h("label",{},"Ism"),f.name,h("label",{},"Bio"),f.bio,
     h("label",{class:"row",style:"color:var(--ink)"},f.grounded,"Faqat bilim bazasidan javob berish (tavsiya etiladi)"),
     h("label",{},"Egasining Telegram chat ID'si (eskalatsiya xabarlari uchun)"),f.chat,h("p",{class:"small muted"},"ID'ni bilish uchun Telegramda @userinfobot ga yozing."),
+    h("div",{style:"margin-top:14px"},h("button",{type:"submit"},"Saqlash"))));
+  const m=await api("/v1/clones/"+clone.id+"/marketplace");if(!m.available)return;
+  const cat=h("select",{},h("option",{value:""},"— tanlang —"),...Object.entries(m.categories).map(([k,v])=>h("option",{value:k,selected:m.category===k},v)));
+  const tag=h("input",{value:m.tagline,maxlength:"160",placeholder:"IELTS 8.0 — Speaking va Writing bo'yicha savollarga javob beraman"});
+  const listed=h("input",{type:"checkbox",style:"width:auto",checked:m.listed});
+  view.append(h("form",{class:"card",style:"max-width:640px;margin-top:16px",onsubmit:guard(async()=>{const r=await patch("/v1/clones/"+clone.id+"/marketplace",{listed:listed.checked,...(cat.value?{category:cat.value}:{}),tagline:tag.value});
+      listed.checked=r.listed;toast(r.listed?"Klon katalogda":"Saqlandi");})},
+    h("h3",{},"Katalog (marketpleys)"),
+    m.blocked?h("p",{class:"small",style:"color:var(--accent)"},"Moderator klonni katalogdan olib tashlagan"+(m.blocked.reason?": "+m.blocked.reason:"")+". Savollar bo'lsa, qo'llab-quvvatlashga yozing."):null,
+    h("p",{class:"small muted"},"Katalogda (/explore) klon kategoriya, tavsif va obunachilar bahosi bilan ko'rinadi."),
+    h("label",{},"Kategoriya"),cat,h("label",{},"Qisqa tavsif"),tag,
+    h("label",{class:"row",style:"color:var(--ink)"},listed,"Katalogda ko'rsatish"),
     h("div",{style:"margin-top:14px"},h("button",{type:"submit"},"Saqlash"))));}
 
 async function boot(){if(!apiKey)return render();try{clones=await api("/v1/clones");}catch(e){toast(e.message,true);return render();}
