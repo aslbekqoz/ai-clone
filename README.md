@@ -62,6 +62,19 @@ Ikkalasi ham xato bersa, tizim qoidalar asosidagi tekshiruvga qaytadi. `TEI_RERA
 
 `ANTHROPIC_API_KEY` bo'lmasa, tizim **MockProvider** bilan ishlaydi. Bu rejimda javob topilgan manbaning birinchi gapi bo'ladi, haqiqiy model emas. Kalit qo'yilsa, Claude ishlaydi: oddiy savollar `claude-haiku-5-5` ga, sotuv va murakkab savollar `claude-sonnet-5-5` ga yo'naltiriladi (`packages/core/src/llm/router.ts`, `DEFAULT_POLICY`).
 
+### Prod'ga joylash (bitta server, Docker)
+
+```bash
+cp .env.example .env     # kalitlarni to'ldiring; qo'shimcha: APP_DB_PASSWORD, POSTGRES_ADMIN_PASSWORD, PLATFORM_DOMAIN
+docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml run --rm api seed   # ixtiyoriy: demo klon
+```
+
+- **Tarkib:** Postgres + pgvector, API, 2 ta worker va Caddy. Caddy TLS'ni avtomatik oladi, mijoz domenlari uchun on-demand TLS ham shu yerda.
+- **Ma'lumotlar bazasi:** ilova bazaga **superuser bo'lmagan** `aiclone` roli bilan ulanadi (`deploy/postgres-init.sh`), shuning uchun RLS haqiqatan ishlaydi. Migratsiyalar API va worker ishga tushganda o'zi qo'llanadi (advisory lock bilan bir marta).
+- **Bitta obraz:** `docker run aiclone api | worker | migrate | seed`.
+- **Tashqi yopiq yo'llar:** `/internal/*` va `/metrics` Caddy orqali tashqaridan ochilmaydi.
+
 ### Testlar
 
 ```bash

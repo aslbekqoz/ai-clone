@@ -1,0 +1,12 @@
+node_modules
+**/node_modules
+.git
+.github
+**/dist
+**/*.tsbuildinfo
+.env
+.env.*
+!.env.example
+docs
+finance
+**/test

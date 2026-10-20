@@ -1,21 +1,24 @@
 # Prod uchun teskari proksi: platforma domeni va mijozlarning o'z domenlari (white-label).
 # Mijoz domeni uchun sertifikat faqat API "ha" desa chiqariladi (tasdiqlangan domen, faol Business tarifi).
+# Muhit: PLATFORM_DOMAIN (masalan, api.aiclone.uz), API_UPSTREAM (sukut: 127.0.0.1:8787).
 {
 	on_demand_tls {
-		ask http://127.0.0.1:8787/internal/tls-ask
+		ask http://{$API_UPSTREAM:127.0.0.1:8787}/internal/tls-ask
 	}
 }
 
-api.aiclone.uz {
-	@internal path /internal/*
+{$PLATFORM_DOMAIN:api.aiclone.uz} {
+	@internal path /internal/* /metrics
 	respond @internal 404
-	reverse_proxy 127.0.0.1:8787
+	reverse_proxy {$API_UPSTREAM:127.0.0.1:8787}
 }
 
-# Mijozlar CNAME qiladigan manzil (CUSTOM_DOMAIN_TARGET=clones.aiclone.uz) va ularning domenlari.
+# Mijozlar CNAME qiladigan manzil (CUSTOM_DOMAIN_TARGET) va ularning domenlari.
 https:// {
 	tls {
 		on_demand
 	}
-	reverse_proxy 127.0.0.1:8787
+	@internal path /internal/* /metrics
+	respond @internal 404
+	reverse_proxy {$API_UPSTREAM:127.0.0.1:8787}
 }

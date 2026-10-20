@@ -42,3 +42,16 @@ jobs:
       - name: Test (superuser)
         run: pnpm test
       - run: python3 finance/model.py
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t aiclone:ci .
+      - name: Obraz ishga tushadi va migratsiyani bajaradi
+        run: |
+          docker network create ci
+          docker run -d --name db --network ci -e POSTGRES_PASSWORD=pw -e APP_DB_PASSWORD=app \
+            -v "$PWD/deploy/postgres-init.sh:/docker-entrypoint-initdb.d/10-aiclone.sh:ro" pgvector/pgvector:pg16
+          for i in $(seq 1 30); do docker exec db pg_isready -h 127.0.0.1 -U postgres -d aiclone && break; sleep 2; done
+          docker run --rm --network ci -e DATABASE_URL=postgres://aiclone:app@db:5432/aiclone aiclone:ci migrate

@@ -1,0 +1,63 @@
+# Bitta serverda prod:  cp .env.example .env  (kalitlarni to'ldiring)  &&  docker compose -f docker-compose.prod.yml up -d --build
+# Tarkib: Postgres + pgvector, API, worker (2 nusxa), Caddy (TLS, mijoz domenlari uchun on-demand TLS).
+x-app: &app
+  build: .
+  image: aiclone:latest
+  restart: unless-stopped
+  env_file: .env
+  environment:
+    DATABASE_URL: postgres://aiclone:${APP_DB_PASSWORD:?APP_DB_PASSWORD kerak}@db:5432/aiclone
+    NODE_ENV: production
+  depends_on:
+    db:
+      condition: service_healthy
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?POSTGRES_ADMIN_PASSWORD kerak}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./deploy/postgres-init.sh:/docker-entrypoint-initdb.d/10-aiclone.sh:ro
+    healthcheck:
+      # TCP orqali: birinchi ishga tushishda init vaqtidagi vaqtinchalik server faqat soketda tinglaydi.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d aiclone"]
+      interval: 5s
+      retries: 20
+
+  api:
+    <<: *app
+    command: ["api"]
+    environment:
+      DATABASE_URL: postgres://aiclone:${APP_DB_PASSWORD}@db:5432/aiclone
+      NODE_ENV: production
+      # Worker alohida konteynerlarda.
+      RUN_WORKER: "0"
+
+  worker:
+    <<: *app
+    command: ["worker"]
+    deploy:
+      replicas: 2
+    healthcheck:
+      disable: true
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      PLATFORM_DOMAIN: ${PLATFORM_DOMAIN:-api.aiclone.uz}
+      API_UPSTREAM: api:8787
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on: [api]
+
+volumes:
+  pgdata:
+  caddy_data:
