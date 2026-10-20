@@ -29,6 +29,14 @@ describe.skipIf(!url)("CloneService (Postgres)", () => {
     await db.end();
   });
 
+  it("har bir FORCE RLS jadvalida ega roli siyosati bor (superuser bo'lmagan prod Postgres)", async () => {
+    const { rows } = await db.query(
+      `SELECT c.relname FROM pg_class c WHERE c.relnamespace = 'public'::regnamespace AND c.relkind = 'r' AND c.relforcerowsecurity
+         AND NOT EXISTS (SELECT 1 FROM pg_policy p WHERE p.polrelid = c.oid AND p.polname = 'system_owner')`,
+    );
+    expect(rows).toEqual([]);
+  });
+
   it("API kalit bilan autentifikatsiya", async () => {
     const { tenantId, apiKey } = await svc.createTenant("C");
     expect(await svc.authenticate(apiKey)).toBe(tenantId);

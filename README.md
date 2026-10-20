@@ -69,6 +69,8 @@ pnpm typecheck
 TEST_DATABASE_URL=postgres://aiclone:aiclone@localhost:5432/aiclone pnpm test   # 166 test: RLS, navbat, katalog, to'lovlar, monetizatsiya, ovoz, fayl, LLM qadamlari, Telegram, Instagram, WhatsApp
 ```
 
+> Prod'dagi kabi superuser bo'lmagan ega bilan tekshirish: bazani oddiy rol (`CREATEROLE`) egaligida yarating, kengaytmalarni (`vector`, `pg_trgm`, `pgcrypto`) admin o'rnatadi, keyin shu rol bilan `TEST_DATABASE_URL` ni ishga tushiring. Docker'dagi `aiclone` superuser bo'lgani uchun RLS xatolarini yashirishi mumkin.
+
 ### API qisqacha
 
 | Metod | Yo'l | Vazifa |
