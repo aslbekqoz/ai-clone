@@ -12,18 +12,19 @@ const STYLES = `
 .acw-msg{max-width:85%;padding:9px 12px;border-radius:12px;white-space:pre-wrap;word-wrap:break-word}
 .acw-bot{align-self:flex-start;background:#fff;border:1px solid var(--line)}
 .acw-owner{align-self:flex-start;background:#fff;border:1px solid var(--accent)}
-.acw-user{align-self:flex-end;background:var(--ink);color:var(--bone)}
+.acw-user{align-self:flex-end;background:var(--brand,var(--ink));color:var(--bone)}
 .acw-src{display:block;margin-top:6px;font-size:12px;color:var(--muted)}
 .acw-src a{color:var(--accent)}
 .acw-offers{display:flex;flex-direction:column;gap:6px;margin-top:8px}
-.acw-offers a{display:block;text-align:center;padding:8px 10px;border-radius:9px;background:var(--ink);color:var(--bone);text-decoration:none;font-size:14px}
+.acw-offers a{display:block;text-align:center;padding:8px 10px;border-radius:9px;background:var(--brand,var(--ink));color:var(--bone);text-decoration:none;font-size:14px}
 .acw-form{display:flex;gap:8px;padding:10px;border-top:1px solid var(--line)}
 .acw-form input{flex:1;min-width:0;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font:inherit;background:#fff;color:var(--ink)}
-.acw-form button{border:0;border-radius:10px;padding:0 16px;background:var(--ink);color:var(--bone);font:inherit;cursor:pointer}
+.acw-form button{border:0;border-radius:10px;padding:0 16px;background:var(--brand,var(--ink));color:var(--bone);font:inherit;cursor:pointer}
 .acw-form button:disabled{opacity:.5;cursor:default}
-.acw-fab{position:fixed;right:20px;bottom:20px;width:56px;height:56px;border-radius:50%;border:0;background:var(--ink);color:var(--bone);font-size:24px;cursor:pointer;box-shadow:0 6px 24px rgba(0,0,0,.18);z-index:2147483000}
+.acw-fab{position:fixed;right:20px;bottom:20px;width:56px;height:56px;border-radius:50%;border:0;background:var(--brand,var(--ink));color:var(--bone);font-size:24px;cursor:pointer;box-shadow:0 6px 24px rgba(0,0,0,.18);z-index:2147483000}
 .acw-float{position:fixed;right:20px;bottom:88px;width:min(380px,calc(100vw - 32px));height:min(560px,calc(100vh - 120px));z-index:2147483000;box-shadow:0 12px 40px rgba(0,0,0,.18)}
 .acw-hidden{display:none}
+.acw-logo{width:28px;height:28px;border-radius:7px;object-fit:cover;float:left;margin-right:10px}
 .acw-rate{display:flex;gap:4px;margin-top:6px}
 .acw-rate button{border:1px solid var(--line);background:transparent;border-radius:8px;padding:1px 8px;font-size:13px;cursor:pointer}
 .acw-rate button[aria-pressed=true]{background:var(--ink);border-color:var(--ink)}
@@ -45,6 +46,9 @@ root.innerHTML='<div class="acw-panel"><div class="acw-head"></div><div class="a
 const panel=root.firstChild,head=root.querySelector(".acw-head"),log=root.querySelector(".acw-log"),form=root.querySelector("form"),input=form.querySelector("input"),btn=form.querySelector("button");
 head.textContent=(script&&script.dataset.title)||"AI-klon bilan suhbat";
 const small=document.createElement("small");small.textContent="Javoblar AI tomonidan beriladi";head.appendChild(small);
+fetch(BASE+"/public/"+encodeURIComponent(slug)+"/config").then(r=>r.ok?r.json():null).then(b=>{if(!b)return;
+  if(b.accent&&/^#[0-9a-f]{6}$/i.test(b.accent))root.style.setProperty("--brand",b.accent);
+  if(b.logoUrl&&/^https:/.test(b.logoUrl)){const i=document.createElement("img");i.className="acw-logo";i.src=b.logoUrl;i.alt="";head.prepend(i);}}).catch(()=>{});
 const target=mount&&document.querySelector(mount);
 if(target){panel.style.height="100%";target.appendChild(root);}else{
   panel.classList.add("acw-float","acw-hidden");const fab=document.createElement("button");fab.className="acw-fab";fab.setAttribute("aria-label","Chatni ochish");fab.textContent="💬";
@@ -84,13 +88,23 @@ f.replaceWith(document.createTextNode(r&&r.ok?"Rahmat, shikoyat moderatorga yubo
 }
 
 /** Ommaviy klon sahifasi — blogerlar Telegram/Instagram bio'siga qo'yadigan havola. */
-export function clonePageHtml(slug: string, name: string, bio: string, base: string, opts: { listed?: boolean } = {}): string {
+export interface PageBrand {
+  accent: string | null;
+  logoUrl: string | null;
+  hidePoweredBy: boolean;
+}
+
+export function clonePageHtml(slug: string, name: string, bio: string, base: string, opts: { listed?: boolean; brand?: PageBrand } = {}): string {
+  const accent = opts.brand?.accent && /^#[0-9a-f]{6}$/i.test(opts.brand.accent) ? opts.brand.accent : null;
+  const logo = opts.brand?.logoUrl && /^https:\/\//.test(opts.brand.logoUrl) ? opts.brand.logoUrl : null;
+  const powered = opts.brand?.hidePoweredBy ? "" : ` <a href="https://aiclone.uz">O'z kloningizni yarating →</a>`;
   return `<!doctype html>
 <html lang="uz"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(name)} — AI-klon</title><meta name="description" content="${esc(bio.slice(0, 160))}">
 <style>
-:root{--ink:#16130f;--bone:#f6f1e7;--muted:#6f675b}
+:root{--ink:#16130f;--bone:#f6f1e7;--muted:#6f675b${accent ? `;--brand:${accent}` : ""}}
 *{box-sizing:border-box}body{margin:0;background:var(--bone);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+header img{width:56px;height:56px;border-radius:14px;object-fit:cover;margin-bottom:12px}
 main{max-width:720px;margin:0 auto;padding:32px 16px;display:flex;flex-direction:column;gap:20px;min-height:100vh}
 h1{font:700 clamp(28px,6vw,44px)/1.05 Georgia,"Times New Roman",serif;margin:0}
 p{margin:0;color:var(--muted)}
@@ -102,9 +116,9 @@ details{font-size:13px;color:var(--muted)}details form{display:flex;flex-wrap:wr
 </style></head>
 <body><main>
 ${opts.listed ? `<a class="back" href="/explore">← Katalog</a>` : ""}
-<header><h1>${esc(name)}</h1><p>${esc(bio)}</p></header>
+<header>${logo ? `<img src="${esc(logo)}" alt="">` : ""}<h1>${esc(name)}</h1><p>${esc(bio)}</p></header>
 <div id="chat"></div>
-<footer>🤖 Bu ${esc(name)}ning AI-kloni: javoblar uning materiallari asosida AI tomonidan yaratiladi. <a href="https://aiclone.uz">O'z kloningizni yarating →</a></footer>
+<footer>🤖 Bu ${esc(name)}ning AI-kloni: javoblar uning materiallari asosida AI tomonidan yaratiladi.${powered}</footer>
 ${opts.listed ? REPORT_FORM : ""}
 </main>
 <script src="${esc(base)}/widget.js" data-clone="${esc(slug)}" data-mount="#chat" data-title="${esc(name)} bilan suhbat"></script>

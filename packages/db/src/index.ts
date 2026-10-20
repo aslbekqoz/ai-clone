@@ -11,3 +11,4 @@ export * from "./voice.js";
 export * from "./monetization.js";
 export * from "./jobs.js";
 export * from "./marketplace.js";
+export * from "./white-label.js";

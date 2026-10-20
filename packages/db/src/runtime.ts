@@ -3,6 +3,7 @@ import { BillingService, billingConfigFromEnv } from "./billing.js";
 import { parseSecretKey } from "./crypto.js";
 import { JobQueue } from "./jobs.js";
 import { MarketplaceService } from "./marketplace.js";
+import { WhiteLabelService } from "./white-label.js";
 import { createPool, type Db } from "./pool.js";
 import { MetaChannels } from "./meta-channels.js";
 import { MonetizationService } from "./monetization.js";
@@ -28,6 +29,8 @@ export interface Runtime {
   monetization: MonetizationService | null;
   /** Ommaviy klonlar katalogi (/explore). */
   marketplace: MarketplaceService;
+  /** Brending va o'z domeni (Business tarifi). CUSTOM_DOMAIN_TARGET — mijoz CNAME qiladigan manzil. */
+  whiteLabel: WhiteLabelService;
   /** Claude ulanganda — skanerlangan PDF va rasmlar uchun OCR. */
   ocr: DocumentOcr | null;
   /** Fon vazifalari navbati (Postgres). JOBS=0 bo'lsa API ishni so'rov ichida bajaradi. */
@@ -68,5 +71,7 @@ export function createRuntime(env: NodeJS.ProcessEnv = process.env): Runtime {
   const ocr = env.ANTHROPIC_API_KEY ? new ClaudeOcr({ apiKey: env.ANTHROPIC_API_KEY }, env.OCR_MODEL ?? "claude-opus-5-5") : null;
   const jobs = env.JOBS === "0" ? null : new JobQueue(db);
   const marketplace = new MarketplaceService(db);
-  return { db, service, telegram, meta, voice, monetization, marketplace, ocr, jobs, billing, llm, embedder, stt };
+  const platformHosts = ["aiclone.uz", ...(env.PUBLIC_BASE_URL ? [new URL(env.PUBLIC_BASE_URL).hostname] : [])];
+  const whiteLabel = new WhiteLabelService(db, { platformHosts, cnameTarget: env.CUSTOM_DOMAIN_TARGET ?? null });
+  return { db, service, telegram, meta, voice, monetization, marketplace, whiteLabel, ocr, jobs, billing, llm, embedder, stt };
 }

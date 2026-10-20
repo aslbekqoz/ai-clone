@@ -66,7 +66,7 @@ Ikkalasi ham xato bersa, tizim qoidalar asosidagi tekshiruvga qaytadi. `TEI_RERA
 
 ```bash
 pnpm typecheck
-TEST_DATABASE_URL=postgres://aiclone:aiclone@localhost:5432/aiclone pnpm test   # 166 test: RLS, navbat, katalog, to'lovlar, monetizatsiya, ovoz, fayl, LLM qadamlari, Telegram, Instagram, WhatsApp
+TEST_DATABASE_URL=postgres://aiclone:aiclone@localhost:5432/aiclone pnpm test   # 174 test: RLS, navbat, katalog, to'lovlar, monetizatsiya, ovoz, fayl, LLM qadamlari, Telegram, Instagram, WhatsApp
 ```
 
 > Prod'dagi kabi superuser bo'lmagan ega bilan tekshirish: bazani oddiy rol (`CREATEROLE`) egaligida yarating, kengaytmalarni (`vector`, `pg_trgm`, `pgcrypto`) admin o'rnatadi, keyin shu rol bilan `TEST_DATABASE_URL` ni ishga tushiring. Docker'dagi `aiclone` superuser bo'lgani uchun RLS xatolarini yashirishi mumkin.
@@ -98,6 +98,8 @@ TEST_DATABASE_URL=postgres://aiclone:aiclone@localhost:5432/aiclone pnpm test   
 | GET | `/explore` · `/public/marketplace?q=&category=` | Ommaviy katalog: HTML sahifa va JSON |
 | POST | `/public/:slug/feedback` · `/public/:slug/report` | Obunachi bahosi (👍/👎) va shikoyat |
 | GET/POST | `/admin/reports` · `/admin/clones/:id/moderation` (`x-admin-token`) | Shikoyatlar va moderatsiya |
+| GET/PATCH/PUT/POST/DELETE | `/v1/clones/:id/white-label` · `/brand` · `/domain` · `/domain/verify` | White-label: brend va o'z domeni (Business) |
+| GET | `/public/:slug/config` · `/internal/tls-ask?domain=` | Vidjet uchun brend; Caddy on-demand TLS tekshiruvi |
 | GET | `/pay/:token` · `/pay/:token/{payme,click}` | Obunachi to'lov sahifasi (imzolangan havola) |
 | POST | `/admin/payouts` (`x-admin-token`) | Kreatorga to'lab berilgan summani qayd etish |
 | GET/POST | `/meta/webhook` | Meta webhooki: tasdiqlash (`hub.challenge`) va `X-Hub-Signature-256` imzosi bilan xabarlar |
@@ -139,6 +141,14 @@ Egasi **Sozlamalar → Katalog** bo'limida kategoriya va qisqa tavsifni tanlab, 
 - **Moderatsiya:** katalogdagi klon sahifasida "Shikoyat qilish" bor (boshqa shaxs nomidan, zararli maslahat, spam). Admin shikoyatlarni `/admin/reports` da ko'radi va klonni bloklaydi. Bloklangan klon katalogdan yo'qoladi, lekin o'z havolasi orqali ishlashda davom etadi.
 
 > Katalog reytingi hozir har so'rovda hisoblanadi; klonlar minglab bo'lganda uni materialized view'ga ko'chirish kerak.
+
+### White-label
+
+Business tarifida egasi **Sozlamalar → White-label** bo'limida quyidagilarni sozlaydi:
+- **Brend:** aksent rangi (oq matn o'qilishi uchun WCAG kontrasti kamida 4.5 bo'lishi tekshiriladi), logo (faqat https) va klon sahifasidagi "O'z kloningizni yarating" havolasini yashirish. "Javoblar AI tomonidan beriladi" degan oshkoralik har doim qoladi.
+- **O'z domeni** (masalan, `ai.dilnoza.uz`): egasi DNS'ga TXT yozuvini (`_aiclone-challenge.<domen>`) va `CUSTOM_DOMAIN_TARGET` ga CNAME qo'shadi, keyin "Tekshirish"ni bosadi. Tasdiqlangan domenning bosh sahifasida klon ochiladi, boshqaruv yo'llari (`/app`, `/v1`, `/admin`) esa u yerda yopiq.
+- **TLS:** `deploy/Caddyfile` dagi on-demand TLS sertifikatni faqat `/internal/tls-ask` "ha" degan domenga chiqaradi, ya'ni domen tasdiqlangan va Business tarifi faol bo'lishi kerak.
+- **Tarif tugasa:** domen va brend o'chadi, sozlamalar saqlanadi va to'lovdan keyin qayta ishlaydi.
 
 ### OCR va Telegram kanali sinxroni
 
@@ -193,7 +203,7 @@ Sukut bo'yicha worker API jarayonining ichida ishlaydi. Yuklama oshsa: `RUN_WORK
 
 ### Keyingi qadamlar (v1–v2, `docs/02-mahsulot-prd.md`)
 
-- Video-avatar, white-label.
+- Video-avatar.
 
 ## Moliyaviy model
 

@@ -331,7 +331,27 @@ async function viewSettings(view){const p=clone.persona;
     h("p",{class:"small muted"},"Katalogda (/explore) klon kategoriya, tavsif va obunachilar bahosi bilan ko'rinadi."),
     h("label",{},"Kategoriya"),cat,h("label",{},"Qisqa tavsif"),tag,
     h("label",{class:"row",style:"color:var(--ink)"},listed,"Katalogda ko'rsatish"),
-    h("div",{style:"margin-top:14px"},h("button",{type:"submit"},"Saqlash"))));}
+    h("div",{style:"margin-top:14px"},h("button",{type:"submit"},"Saqlash"))));
+  await whiteLabelCard(view);}
+
+async function whiteLabelCard(view){let w;try{w=await api("/v1/clones/"+clone.id+"/white-label");}catch{return;}
+  const card=h("div",{class:"card",style:"max-width:640px;margin-top:16px"},h("h3",{},"White-label"));view.append(card);
+  if(!w.available){card.append(h("p",{class:"small muted"},"O'z brendingiz, “AI Clone” havolasini yashirish va o'z domeningiz (masalan, ai.sizningsayt.uz) — Business tarifida."));return;}
+  const b=w.brand,f={accent:h("input",{type:"color",value:b.accent||"#16130f",style:"width:64px;padding:2px"}),logo:h("input",{type:"url",value:b.logoUrl||"",placeholder:"https://…/logo.png"}),hide:h("input",{type:"checkbox",style:"width:auto",checked:b.hidePoweredBy})};
+  card.append(h("form",{onsubmit:guard(async()=>{await patch("/v1/clones/"+clone.id+"/white-label/brand",{accent:f.accent.value,logoUrl:f.logo.value.trim()||null,hidePoweredBy:f.hide.checked});toast("Brend saqlandi");})},
+    h("label",{},"Aksent rangi"),f.accent,h("label",{},"Logo havolasi"),f.logo,
+    h("label",{class:"row",style:"color:var(--ink)"},f.hide,"“O'z kloningizni yarating” havolasini yashirish"),
+    h("p",{class:"small muted"},"“Javoblar AI tomonidan beriladi” degan oshkoralik har doim ko'rinadi."),
+    h("div",{style:"margin-top:12px"},h("button",{type:"submit"},"Saqlash"))));
+  const dom=h("input",{value:w.domain?w.domain.domain:"",placeholder:"ai.sizningsayt.uz"});const box=h("div",{});
+  const show=(d)=>{box.replaceChildren();if(!d)return;
+    box.append(h("p",{class:"small"},d.verified?"✅ Domen tasdiqlangan — https://"+d.domain+" ishlaydi.":"DNS'ga quyidagi yozuvlarni qo'shing, so'ng “Tekshirish”ni bosing:"),
+      d.verified?null:h("p",{class:"small muted",style:"word-break:break-all"},"TXT  "+d.txt.name+"  →  "+d.txt.value),
+      d.cname?h("p",{class:"small muted",style:"word-break:break-all"},"CNAME  "+d.cname.name+"  →  "+d.cname.value):null,
+      h("div",{class:"row",style:"margin-top:8px"},d.verified?null:h("button",{type:"button",onclick:guard(async()=>{const r=await post("/v1/clones/"+clone.id+"/white-label/domain/verify",{});show(r);toast(r.verified?"Tasdiqlandi":"TXT yozuvi hali ko'rinmayapti (DNS yangilanishi 1 soatgacha olishi mumkin)",!r.verified);})},"Tekshirish"),
+        h("button",{type:"button",class:"ghost",onclick:guard(async()=>{await api("/v1/clones/"+clone.id+"/white-label/domain",{method:"DELETE"});dom.value="";show(null);toast("Domen uzildi");})},"Uzish")));};
+  card.append(h("form",{style:"margin-top:16px",onsubmit:guard(async()=>{show(await api("/v1/clones/"+clone.id+"/white-label/domain",{method:"PUT",body:JSON.stringify({domain:dom.value})}));})},
+    h("label",{},"O'z domeningiz"),dom,h("div",{style:"margin-top:12px"},h("button",{type:"submit"},"Ulash"))),box);show(w.domain);}
 
 async function boot(){if(!apiKey)return render();try{clones=await api("/v1/clones");}catch(e){toast(e.message,true);return render();}
   const saved=store.get(CLONE);clone=clones.find(c=>c.id===saved)||clones[0]||null;render();}

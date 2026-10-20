@@ -20,6 +20,7 @@ const app = createApp(rt.service, {
   voice: rt.voice,
   monetization: rt.monetization,
   marketplace: rt.marketplace,
+  whiteLabel: rt.whiteLabel,
   ocr: rt.ocr,
   jobs: rt.jobs ? { queue: rt.jobs, ...(worker ? { notify: () => worker.notify() } : {}) } : null,
 }, rt.billing);

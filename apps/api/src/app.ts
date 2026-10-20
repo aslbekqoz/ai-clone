@@ -21,6 +21,7 @@ import {
   PaymentNotConfiguredError,
   TelegramConnectError,
   VoiceError,
+  WhiteLabelError,
   type BillingService,
   type CloneService,
   type Category,
@@ -30,6 +31,7 @@ import {
   type MonetizationService,
   type TelegramChannels,
   type VoiceService,
+  type WhiteLabelService,
 } from "@ai-clone/db";
 import { QUEUES, telegramGroupKey } from "./jobs.js";
 import { processMetaInbound } from "./meta-webhook.js";
@@ -61,6 +63,8 @@ export interface AppConfig {
   monetization?: MonetizationService | null;
   /** Ommaviy katalog (/explore). */
   marketplace?: MarketplaceService | null;
+  /** Brending va o'z domeni. */
+  whiteLabel?: WhiteLabelService | null;
   /** Skanerlangan PDF va rasmlar uchun. */
   ocr?: DocumentOcr | null;
   /**
@@ -140,6 +144,14 @@ const schemas = {
   visitorFeedback: z.object({ visitorId: z.string().regex(/^[\w-]{8,64}$/), messageId: z.string().uuid(), rating: z.union([z.literal(1), z.literal(-1)]) }),
   report: z.object({ visitorId: z.string().regex(/^[\w-]{8,64}$/), reason: z.enum(["impersonation", "harmful", "spam", "other"]), details: z.string().max(500).default("") }),
   moderation: z.object({ status: z.enum(["ok", "blocked"]), reason: z.string().max(500).optional() }),
+  brand: z
+    .object({
+      accent: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable(),
+      logoUrl: z.string().url().max(500).nullable(),
+      hidePoweredBy: z.boolean(),
+    })
+    .partial(),
+  domain: z.object({ domain: z.string().min(4).max(253) }),
   feedback: z.object({ rating: z.union([z.literal(1), z.literal(-1)]), correction: z.string().max(4000).optional() }),
 };
 
@@ -159,7 +171,7 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
   app.onError((err, c) => {
     if (err instanceof HTTPException) return c.json({ error: err.message }, err.status);
     if (err instanceof PaymentNotConfiguredError) return c.json({ error: err.message }, 503);
-    if (err instanceof TelegramConnectError || err instanceof MetaConnectError || err instanceof VoiceError || err instanceof MonetizationError || err instanceof MarketplaceError) return c.json({ error: err.message }, err.status);
+    if (err instanceof TelegramConnectError || err instanceof MetaConnectError || err instanceof VoiceError || err instanceof MonetizationError || err instanceof MarketplaceError || err instanceof WhiteLabelError) return c.json({ error: err.message }, err.status);
     if (err.message.includes("topilmadi")) return c.json({ error: err.message }, 404);
     if ((err as { code?: string }).code === "23505") return c.json({ error: "Bunday yozuv allaqachon mavjud" }, 409);
     if ((err as { code?: string }).code === "22P02") return c.json({ error: "Topilmadi" }, 404);
@@ -167,7 +179,35 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
     return c.json({ error: "Ichki xato" }, 500);
   });
 
+  // --- O'z domeni: ai.dilnoza.uz → shu klonning sahifasi. Boshqaruv yo'llari mijoz domenida ochilmaydi. ---
+  const platformHost = cfg.publicBaseUrl ? new URL(cfg.publicBaseUrl).host : null;
+  const hostCache = new Map<string, { at: number; target: { tenantId: string; cloneId: string; slug: string } | null }>();
+  const resolveHost = async (host: string) => {
+    const hit = hostCache.get(host);
+    if (hit && Date.now() - hit.at < 60_000) return hit.target;
+    const target = await cfg.whiteLabel!.resolveHost(host);
+    if (hostCache.size > 5000) hostCache.clear();
+    hostCache.set(host, { at: Date.now(), target });
+    return target;
+  };
+  app.use("*", async (c, next) => {
+    const host = c.req.header("host")?.toLowerCase();
+    if (!cfg.whiteLabel || !host || host === platformHost || /^(localhost|127\.|\[::1\])/.test(host)) return next();
+    const target = await resolveHost(host);
+    if (!target) return next();
+    const path = c.req.path;
+    if (path === "/") return renderClonePage(c, target, `${c.req.header("x-forwarded-proto") ?? "https"}://${host}`);
+    if (path.startsWith("/c/")) return c.redirect("/");
+    if (/^\/(public|pay)\//.test(path) || path === "/widget.js" || path === "/health") return next();
+    return c.text("Topilmadi", 404);
+  });
+
   app.get("/health", (c) => c.json({ ok: true }));
+  // Caddy on-demand TLS: sertifikat faqat tasdiqlangan mijoz domeniga chiqariladi.
+  app.get("/internal/tls-ask", async (c) => {
+    const domain = c.req.query("domain") ?? "";
+    return cfg.whiteLabel && (await cfg.whiteLabel.resolveHost(domain)) ? c.text("ok") : c.text("no", 404);
+  });
   app.get("/app", (c) => c.html(dashboardHtml(), 200, { "cache-control": "no-store", "x-frame-options": "DENY" }));
 
   // --- Admin: tenant yaratish (keyin onboarding UI bilan almashtiriladi) ---
@@ -496,6 +536,24 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
     return c.json(await marketplaceOr503().update(t(c), c.req.param("id"), m));
   });
 
+  const whiteLabelOr503 = () => {
+    if (!cfg.whiteLabel) throw new HTTPException(503, { message: "White-label yoqilmagan" });
+    return cfg.whiteLabel;
+  };
+  v1.get("/clones/:id/white-label", async (c) => c.json(await whiteLabelOr503().settings(t(c), c.req.param("id"))));
+  v1.patch("/clones/:id/white-label/brand", async (c) => c.json(await whiteLabelOr503().updateBrand(t(c), c.req.param("id"), await body(c, schemas.brand))));
+  v1.put("/clones/:id/white-label/domain", async (c) => c.json(await whiteLabelOr503().setDomain(t(c), c.req.param("id"), (await body(c, schemas.domain)).domain)));
+  v1.post("/clones/:id/white-label/domain/verify", async (c) => {
+    const status = await whiteLabelOr503().verifyDomain(t(c), c.req.param("id"));
+    hostCache.delete(status.domain);
+    return c.json(status);
+  });
+  v1.delete("/clones/:id/white-label/domain", async (c) => {
+    const s = await whiteLabelOr503().settings(t(c), c.req.param("id"));
+    if (s.domain) hostCache.delete(s.domain.domain);
+    return c.json({ ok: await whiteLabelOr503().removeDomain(t(c), c.req.param("id")) });
+  });
+
   v1.get("/jobs/:jobId", async (c) => {
     const job = cfg.jobs ? await cfg.jobs.queue.get(t(c), c.req.param("jobId")) : null;
     if (!job) throw new HTTPException(404, { message: "Vazifa topilmadi" });
@@ -618,6 +676,12 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
     const cards = await cfg.marketplace.search({ ...(q ? { q } : {}), ...(cat ? { category: cat } : {}), offset: (page - 1) * PAGE_SIZE, limit: PAGE_SIZE + 1 });
     return c.html(exploreHtml(cards.slice(0, PAGE_SIZE), { q, category: cat, page, hasMore: cards.length > PAGE_SIZE }), 200, { "cache-control": "public, max-age=60" });
   });
+  app.get("/public/:slug/config", async (c) => {
+    const target = await svc.resolveSlug(c.req.param("slug"));
+    if (!target) throw new HTTPException(404, { message: "Klon topilmadi" });
+    const brand = cfg.whiteLabel ? await cfg.whiteLabel.publicBrand(target.tenantId, target.cloneId) : { accent: null, logoUrl: null, hidePoweredBy: false };
+    return c.json({ accent: brand.accent, logoUrl: brand.logoUrl }, 200, { "cache-control": "public, max-age=300" });
+  });
   app.get("/public/:slug/updates", async (c) => {
     const target = await svc.resolveSlug(c.req.param("slug"));
     const visitorId = c.req.query("visitorId") ?? "";
@@ -642,10 +706,16 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
   app.get("/c/:slug", async (c) => {
     const target = await svc.resolveSlug(c.req.param("slug"));
     if (!target) return c.text("Klon topilmadi", 404);
-    const clone = await svc.getClone(target.tenantId, target.cloneId);
-    const listed = cfg.marketplace ? await cfg.marketplace.isListed(target.cloneId) : false;
-    return c.html(clonePageHtml(clone!.slug, clone!.persona.name, clone!.persona.bio, cfg.publicBaseUrl ?? new URL(c.req.url).origin, { listed }));
+    return renderClonePage(c, target, cfg.publicBaseUrl ?? new URL(c.req.url).origin);
   });
+
+  async function renderClonePage(c: Context, target: { tenantId: string; cloneId: string }, base: string) {
+    const clone = await svc.getClone(target.tenantId, target.cloneId);
+    if (!clone) return c.text("Klon topilmadi", 404);
+    const listed = cfg.marketplace ? await cfg.marketplace.isListed(target.cloneId) : false;
+    const brand = cfg.whiteLabel ? await cfg.whiteLabel.publicBrand(target.tenantId, target.cloneId) : null;
+    return c.html(clonePageHtml(clone.slug, clone.persona.name, clone.persona.bio, base, { listed, ...(brand ? { brand } : {}) }));
+  }
 
   return app;
 }
