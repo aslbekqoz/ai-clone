@@ -9,3 +9,4 @@ export * from "./telegram-channels.js";
 export * from "./meta-channels.js";
 export * from "./voice.js";
 export * from "./monetization.js";
+export * from "./jobs.js";

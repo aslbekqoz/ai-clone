@@ -6,6 +6,7 @@ import {
   fetchYouTubeTranscript,
   parseFile,
   parseMetaWebhook,
+  parseYouTubeId,
   verifyMetaSignature,
   type DocumentOcr,
   type ParsedDocument,
@@ -20,11 +21,13 @@ import {
   VoiceError,
   type BillingService,
   type CloneService,
+  type JobQueue,
   type MetaChannels,
   type MonetizationService,
   type TelegramChannels,
   type VoiceService,
 } from "@ai-clone/db";
+import { QUEUES, telegramGroupKey } from "./jobs.js";
 import { processMetaInbound } from "./meta-webhook.js";
 import type { ApiClientOptions } from "grammy";
 import type { Update } from "grammy/types";
@@ -53,6 +56,11 @@ export interface AppConfig {
   monetization?: MonetizationService | null;
   /** Skanerlangan PDF va rasmlar uchun. */
   ocr?: DocumentOcr | null;
+  /**
+   * Fon navbati: webhook'lar darhol 200 qaytaradi, javob worker'da tayyorlanadi; YouTube va OCR
+   * 202 + vazifa ID qaytaradi. Bo'lmasa — hammasi so'rov ichida (testlar, oddiy lokal ishga tushirish).
+   */
+  jobs?: { queue: JobQueue; notify?: () => void } | null;
 }
 
 type Env = { Variables: { tenantId: string } };
@@ -139,6 +147,7 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
     if (err instanceof TelegramConnectError || err instanceof MetaConnectError || err instanceof VoiceError || err instanceof MonetizationError) return c.json({ error: err.message }, err.status);
     if (err.message.includes("topilmadi")) return c.json({ error: err.message }, 404);
     if ((err as { code?: string }).code === "23505") return c.json({ error: "Bunday yozuv allaqachon mavjud" }, 409);
+    if ((err as { code?: string }).code === "22P02") return c.json({ error: "Topilmadi" }, 404);
     console.error(err);
     return c.json({ error: "Ichki xato" }, 500);
   });
@@ -223,6 +232,12 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
       if (!(err instanceof NeedsOcrError)) throw new HTTPException(err instanceof UnsupportedFileError ? 415 : 422, { message: (err as Error).message });
       if (!cfg.ocr) throw new HTTPException(422, { message: `${err.message}. Serverda OCR sozlanmagan (ANTHROPIC_API_KEY).` });
       if (err.pages > MAX_OCR_PAGES) throw new HTTPException(413, { message: `Skanerlangan hujjat ${err.pages} bet — OCR uchun ${MAX_OCR_PAGES} betgacha bo'lib yuklang` });
+      if (cfg.jobs) {
+        const title = typeof form.title === "string" && form.title.trim() ? form.title.trim() : err.title;
+        const jobId = await cfg.jobs.queue.enqueue(QUEUES.ocr, { cloneId: c.req.param("id"), kind: err.kind, mimeType: err.mimeType, title }, { tenantId: t(c), blob: data, maxAttempts: 3 });
+        cfg.jobs.notify?.();
+        return c.json({ jobId, status: "queued", ocr: true }, 202);
+      }
       try {
         const sections = err.kind === "pdf" ? await cfg.ocr.ocrPdf(data) : await cfg.ocr.ocrImage(data, err.mimeType as "image/png" | "image/jpeg" | "image/webp");
         if (!sections.length) throw new Error("Hujjatda o'qiladigan matn topilmadi");
@@ -239,6 +254,12 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
   v1.post("/clones/:id/sources/youtube", async (c) => {
     await cloneOr404(c);
     const { url, title } = await body(c, schemas.youtube);
+    if (cfg.jobs) {
+      if (!parseYouTubeId(url)) throw new HTTPException(422, { message: "YouTube havolasi noto'g'ri" });
+      const jobId = await cfg.jobs.queue.enqueue(QUEUES.youtube, { cloneId: c.req.param("id"), url, ...(title ? { title } : {}) }, { tenantId: t(c), maxAttempts: 3 });
+      cfg.jobs.notify?.();
+      return c.json({ jobId, status: "queued" }, 202);
+    }
     let tr;
     try {
       tr = await fetchYouTubeTranscript(url, { stt: cfg.stt ?? null });
@@ -436,6 +457,12 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
     return c.json(await billingOr503().createOrder(t(c), o.plan, o.months, o.provider), 201);
   });
 
+  v1.get("/jobs/:jobId", async (c) => {
+    const job = cfg.jobs ? await cfg.jobs.queue.get(t(c), c.req.param("jobId")) : null;
+    if (!job) throw new HTTPException(404, { message: "Vazifa topilmadi" });
+    return c.json(job);
+  });
+
   app.route("/v1", v1);
 
   // --- Telegram webhook: har bir klonning boti uchun alohida manzil va sir ---
@@ -446,7 +473,16 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
     if (!dispatch) return c.json({ error: "Telegram sozlanmagan" }, 404);
     const update = (await c.req.json().catch(() => null)) as Update | null;
     if (!update || typeof update.update_id !== "number") return c.json({ error: "Update noto'g'ri" }, 400);
-    const ok = await dispatch(c.req.param("id"), c.req.header("x-telegram-bot-api-secret-token"), update);
+    const id = c.req.param("id");
+    const secret = c.req.header("x-telegram-bot-api-secret-token");
+    if (cfg.jobs) {
+      // Telegram javobni ~60 soniya kutadi va xato bo'lsa qayta yuboradi: tez tasdiqlab, ishni worker'ga beramiz.
+      if (!(await cfg.telegram!.resolveWebhook(id, secret))) return c.json({ error: "Ruxsat yo'q" }, 401);
+      await cfg.jobs.queue.enqueue(QUEUES.telegram, { botId: id, update }, { singletonKey: `tg:${id}:${update.update_id}`, groupKey: telegramGroupKey(id, update), maxAttempts: 3 });
+      cfg.jobs.notify?.();
+      return c.json({ ok: true });
+    }
+    const ok = await dispatch(id, secret, update);
     return ok ? c.json({ ok: true }) : c.json({ error: "Ruxsat yo'q" }, 401);
   });
 
@@ -466,7 +502,23 @@ export function createApp(svc: CloneService, cfg: AppConfig = {}, billing?: Bill
     } catch {
       return c.text("JSON xato", 400);
     }
-    const result = await processMetaInbound(svc, cfg.meta.channels, parseMetaWebhook(json), cfg.stt ?? null);
+    const events = parseMetaWebhook(json);
+    if (cfg.jobs) {
+      let queued = 0;
+      let skipped = 0;
+      for (const ev of events) {
+        const ch = await cfg.meta.channels.resolveByAccount(ev.kind, ev.accountId);
+        // Takroriy yetkazish singleton kalit bilan atomar ravishda bitta vazifaga aylanadi.
+        const jobId = ch
+          ? await cfg.jobs.queue.enqueue(QUEUES.meta, { event: ev }, { tenantId: ch.tenantId, singletonKey: `meta:${ev.messageId}`, groupKey: `meta:${ev.kind}:${ev.accountId}:${ev.senderId}`, maxAttempts: 3 })
+          : null;
+        if (jobId) queued++;
+        else skipped++;
+      }
+      if (queued) cfg.jobs.notify?.();
+      return c.json({ ok: true, queued, skipped });
+    }
+    const result = await processMetaInbound(svc, cfg.meta.channels, events, cfg.stt ?? null);
     return c.json({ ok: true, ...result });
   });
 

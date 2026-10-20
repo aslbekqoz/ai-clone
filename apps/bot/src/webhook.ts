@@ -1,5 +1,5 @@
 import type { SpeechToText } from "@ai-clone/core";
-import type { CloneService, TelegramChannels, VoiceService } from "@ai-clone/db";
+import type { CloneService, ResolvedBot, TelegramChannels, VoiceService } from "@ai-clone/db";
 import type { Bot, ApiClientOptions } from "grammy";
 import type { Update, UserFromGetMe } from "grammy/types";
 import { createBot } from "./bot.js";
@@ -17,15 +17,19 @@ export interface WebhookDispatcherOptions {
  * Ko'p klonli webhook: POST /telegram/<id> → shu klonning boti. Bot nusxalari keshlanadi
  * (grammY middleware'larini har so'rovda qayta qurmaslik uchun).
  */
-export function createWebhookDispatcher(svc: CloneService, channels: TelegramChannels, opts: WebhookDispatcherOptions = {}) {
+export interface WebhookDispatcher {
+  /** Sirni tekshirib, yangilanishni darhol qayta ishlaydi. false — kanal topilmadi yoki sir noto'g'ri (401). */
+  (id: string, secretHeader: string | undefined, update: Update): Promise<boolean>;
+  /** Sir oldin tekshirilgan (navbat worker'i). false — bot uzilgan. */
+  handle(id: string, update: Update): Promise<boolean>;
+}
+
+export function createWebhookDispatcher(svc: CloneService, channels: TelegramChannels, opts: WebhookDispatcherOptions = {}): WebhookDispatcher {
   const cache = new Map<string, { bot: Bot; at: number }>();
   const ttl = opts.cacheMs ?? 60_000;
 
-  /** false — kanal topilmadi yoki sir noto'g'ri (401 qaytariladi). */
-  return async function dispatch(id: string, secretHeader: string | undefined, update: Update): Promise<boolean> {
-    const resolved = await channels.resolveWebhook(id, secretHeader);
-    if (!resolved) return false;
-    let entry = cache.get(id);
+  async function run(resolved: ResolvedBot, update: Update): Promise<boolean> {
+    let entry = cache.get(resolved.id);
     if (!entry || Date.now() - entry.at > ttl) {
       const clone = await svc.getClone(resolved.tenantId, resolved.cloneId);
       if (!clone) return false;
@@ -39,9 +43,20 @@ export function createWebhookDispatcher(svc: CloneService, channels: TelegramCha
         ...(opts.client ? { client: opts.client } : {}),
       });
       entry = { bot, at: Date.now() };
-      cache.set(id, entry);
+      cache.set(resolved.id, entry);
     }
     await entry.bot.handleUpdate(update);
     return true;
+  }
+
+  const dispatch = async (id: string, secretHeader: string | undefined, update: Update) => {
+    const resolved = await channels.resolveWebhook(id, secretHeader);
+    return resolved ? run(resolved, update) : false;
   };
+  return Object.assign(dispatch, {
+    handle: async (id: string, update: Update) => {
+      const resolved = await channels.resolveById(id);
+      return resolved ? run(resolved, update) : false;
+    },
+  });
 }

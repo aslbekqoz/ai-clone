@@ -1,6 +1,7 @@
 import { AnthropicProvider, ClaudeOcr, DEFAULT_POLICY, ElevenLabsStt, ElevenLabsVoice, HashingEmbedder, LLMRouter, MockProvider, TeiEmbedder, TeiReranker, mockPolicy, type DocumentOcr, type Embedder, type SpeechToText } from "@ai-clone/core";
 import { BillingService, billingConfigFromEnv } from "./billing.js";
 import { parseSecretKey } from "./crypto.js";
+import { JobQueue } from "./jobs.js";
 import { createPool, type Db } from "./pool.js";
 import { MetaChannels } from "./meta-channels.js";
 import { MonetizationService } from "./monetization.js";
@@ -26,6 +27,8 @@ export interface Runtime {
   monetization: MonetizationService | null;
   /** Claude ulanganda — skanerlangan PDF va rasmlar uchun OCR. */
   ocr: DocumentOcr | null;
+  /** Fon vazifalari navbati (Postgres). JOBS=0 bo'lsa API ishni so'rov ichida bajaradi. */
+  jobs: JobQueue | null;
 }
 
 /**
@@ -60,5 +63,6 @@ export function createRuntime(env: NodeJS.ProcessEnv = process.env): Runtime {
   const cloner = env.ELEVENLABS_API_KEY ? new ElevenLabsVoice(env.ELEVENLABS_API_KEY, env.ELEVENLABS_TTS_MODEL ?? "eleven_v3") : null;
   const voice = new VoiceService(db, cloner, stt, { allowCrossBorder: env.VOICE_ALLOW_CROSS_BORDER === "1" });
   const ocr = env.ANTHROPIC_API_KEY ? new ClaudeOcr({ apiKey: env.ANTHROPIC_API_KEY }, env.OCR_MODEL ?? "claude-opus-5-5") : null;
-  return { db, service, telegram, meta, voice, monetization, ocr, billing, llm, embedder, stt };
+  const jobs = env.JOBS === "0" ? null : new JobQueue(db);
+  return { db, service, telegram, meta, voice, monetization, ocr, jobs, billing, llm, embedder, stt };
 }

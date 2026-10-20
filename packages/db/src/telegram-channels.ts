@@ -148,6 +148,16 @@ export class TelegramChannels {
     return { id, tenantId: r.tenant_id, cloneId: r.clone_id, token: decryptSecret(r.token_enc, this.key), botInfo: r.bot_info };
   }
 
+  /** Worker uchun: sir webhook qabul qilinganda tekshirilgan. Bot uzilgan bo'lsa null. */
+  async resolveById(id: string): Promise<ResolvedBot | null> {
+    const { rows } = await this.db.query<{ tenant_id: string; clone_id: string; token_enc: string; bot_info: TelegramBotInfo }>(
+      "SELECT tenant_id, clone_id, token_enc, bot_info FROM telegram_bots WHERE id = $1",
+      [id],
+    );
+    const r = rows[0];
+    return r ? { id, tenantId: r.tenant_id, cloneId: r.clone_id, token: decryptSecret(r.token_enc, this.key), botInfo: r.bot_info } : null;
+  }
+
   async resolveByClone(tenantId: string, cloneId: string): Promise<ResolvedBot | null> {
     const { rows } = await this.db.query<{ id: string; token_enc: string; bot_info: TelegramBotInfo }>("SELECT id, token_enc, bot_info FROM telegram_bots WHERE clone_id = $1 AND tenant_id = $2", [cloneId, tenantId]);
     const r = rows[0];

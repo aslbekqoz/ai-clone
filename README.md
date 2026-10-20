@@ -37,8 +37,8 @@ packages/core   AI yadro: o'zbek matnini normallashtirish (lotin/kirill), chunki
                 persona va uslub prompti, guardrails (eskalatsiya, PII niqoblash), LLM router (fallback,
                 circuit breaker, xarajat hisobi), Claude adapteri, Telegram eksporti parseri
 packages/db     Postgres + pgvector sxemasi, har bir jadvalda RLS, bilim ombori, CloneService
-                (chat, lidlar, human takeover, tuzatish → tasdiqlangan javob, limitlar)
-apps/api        HTTP API (Hono), egasi dashboardi (/app), sayt vidjeti (/widget.js), ommaviy klon sahifasi (/c/<slug>)
+                (chat, lidlar, human takeover, tuzatish → tasdiqlangan javob, limitlar), fon vazifalari navbati
+apps/api        HTTP API (Hono), egasi dashboardi (/app), sayt vidjeti (/widget.js), ommaviy klon sahifasi (/c/<slug>), worker
 apps/bot        Telegram bot (grammY): suhbat, ovozli xabarlar (STT), /forget, egasiga eskalatsiya, /reply /takeover /bot, kanal sinxroni /sync /unsync
 ```
 
@@ -50,6 +50,7 @@ docker compose up -d                 # Postgres 16 + pgvector
 cp .env.example .env && set -a && . ./.env && set +a
 pnpm seed                            # demo klon: "Dilnoza (IELTS)" + API kalit
 pnpm dev:api                         # dashboard: http://localhost:8787/app · klon: /c/dilnoza-demo
+RUN_WORKER=0 pnpm dev:api & pnpm worker  # ixtiyoriy: worker alohida jarayonda
 TELEGRAM_BOT_TOKEN=... pnpm dev:bot  # ixtiyoriy: bitta bot, long polling (lokal sinov)
 ```
 
@@ -65,7 +66,7 @@ Ikkalasi ham xato bersa, tizim qoidalar asosidagi tekshiruvga qaytadi. `TEI_RERA
 
 ```bash
 pnpm typecheck
-TEST_DATABASE_URL=postgres://aiclone:aiclone@localhost:5432/aiclone pnpm test   # 149 test: RLS, to'lovlar, monetizatsiya, ovoz, fayl, LLM qadamlari, Telegram, Instagram, WhatsApp
+TEST_DATABASE_URL=postgres://aiclone:aiclone@localhost:5432/aiclone pnpm test   # 157 test: RLS, navbat, to'lovlar, monetizatsiya, ovoz, fayl, LLM qadamlari, Telegram, Instagram, WhatsApp
 ```
 
 ### API qisqacha
@@ -77,6 +78,7 @@ TEST_DATABASE_URL=postgres://aiclone:aiclone@localhost:5432/aiclone pnpm test   
 | PATCH | `/v1/clones/:id/style` | Uslub profilini tahrirlash |
 | POST | `/v1/clones/:id/sources` · `/sources/url` · `/sources/telegram` | Bilim yuklash: matn, sayt yoki Telegram eksporti |
 | POST | `/v1/clones/:id/sources/file` (multipart) · `/sources/youtube` | PDF (iqtibos sahifa raqami bilan), DOCX, TXT/MD; YouTube (iqtibos videoning aniq daqiqasiga havola bilan) |
+| GET | `/v1/jobs/:id` | Fon vazifasi holati (YouTube, OCR): `queued` → `running` → `done` / `failed` |
 | POST | `/v1/clones/:id/exemplars` | Uslub namunasi qo'shish |
 | POST | `/v1/clones/:id/chat` | Klon bilan suhbat |
 | GET | `/v1/clones/:id/conversations?filter=escalated` · `/leads?format=csv` · `/stats` | Inbox, lidlar, statistika |
@@ -160,9 +162,22 @@ Egasi **Daromad** bo'limida mahsulot yaratadi (masalan, "50 ta savol" paketi yok
 
 > ⚠️ Platforma kreator nomidan pul qabul qiladi. Prod'dan oldin quyidagilarni yuristingiz va buxgalteringiz bilan hal qiling: kreatorlar bilan agentlik shartnomasi, to'lov tizimining marketplace (sub-merchant) shartlari, soliq (QQS, kreator daromadi).
 
+### Fon vazifalari navbati
+
+Og'ir ishlar HTTP so'rovidan chiqarilib, Postgres ustidagi navbatga (`jobs` jadvali, alohida broker kerak emas) qo'yiladi:
+- **Telegram webhook:** sir tekshiriladi, yangilanish navbatga yoziladi va Telegram'ga darhol 200 qaytadi. Telegram qayta yuborgan `update_id` ikkinchi vazifa yaratmaydi.
+- **Meta webhook:** imzo tekshiriladi, har bir xabar alohida vazifa bo'ladi; takroriy yetkazish `messageId` bo'yicha o'tkazib yuboriladi.
+- **YouTube va OCR:** API `202 { jobId }` qaytaradi, dashboard `/v1/jobs/:id` orqali natijani kutadi.
+- **Tartib:** bitta suhbatning xabarlari ketma-ket qayta ishlanadi, turli suhbatlar parallel.
+- **Qayta urinish:** xatoda 5 s, 10 s, 20 s… (10 daqiqagacha) kechikish bilan; qayta urinish foyda bermaydigan xatolar (subtitr yo'q, OCR rad etildi) darhol `failed`. Osilib qolgan vazifa qulf muddati (15 daqiqa) tugagach boshqa worker'ga o'tadi.
+- **Maxfiylik:** tugagan vazifalar 7 kundan keyin o'chiriladi, OCR fayli vazifa tugashi bilan tozalanadi.
+
+Sukut bo'yicha worker API jarayonining ichida ishlaydi. Yuklama oshsa: `RUN_WORKER=0` bilan API, alohida `pnpm worker` nusxalari (`FOR UPDATE SKIP LOCKED` bilan xavfsiz). `JOBS=0` navbatni o'chiradi va hammasi so'rov ichida bajariladi.
+
+> Yetkazish kafolati "kamida bir marta": worker javob yuborgandan keyin, vazifani yopishdan oldin qulasa, foydalanuvchi javobni ikki marta olishi mumkin.
+
 ### Keyingi qadamlar (v1–v2, `docs/02-mahsulot-prd.md`)
 
-- Webhook yangilanishlarini navbat (pg-boss) orqali qayta ishlash. Hozir javob webhook so'rovi ichida tayyorlanadi.
 - Video-avatar, klonlar marketpleysi, white-label.
 
 ## Moliyaviy model

@@ -9,7 +9,7 @@
 | Til / ilova | **TypeScript monorepo (pnpm + Turborepo)**: `apps/web` (Next.js App Router — dashboard, landing, vidjet), `apps/worker` (Node fon vazifalari), `packages/core` (RAG, persona, LLM qatlami), `packages/db` | 1–3 dasturchi uchun frontend, backend va workerlar bitta tilda |
 | Ma'lumotlar bazasi | **PostgreSQL 16 + pgvector (HNSW, `halfvec`) + pg_trgm + FTS** | Bitta baza: relyatsion, vektor va kalit so'z qidiruvi. RLS — tenant izolyatsiyasi. ~50 mln chunkgacha alohida vektor DB shart emas |
 | ORM | Drizzle | pgvector va RLS bilan qulay, tiplangan SQL |
-| Navbat (queue) | **pg-boss** (Postgres asosida) | Yangi infratuzilma yo'q, har bir regionda bir xil ishlaydi |
+| Navbat (queue) | **Postgres `jobs` jadvali** (`FOR UPDATE SKIP LOCKED`, `packages/db/src/jobs.ts`) | Yangi infratuzilma yo'q, har bir regionda bir xil ishlaydi; suhbat bo'yicha tartib va takrorlanmaslik o'rnatilgan. Kerak bo'lsa pg-boss'ga almashtiriladi |
 | Kesh / rate limit | Valkey/Redis | Sessiyalar, limitlar, semantik javob keshi |
 | Fayl saqlash | S3-mos (UZ DC'da S3-mos saqlagich; global — Cloudflare R2) | Yuklangan fayllar, audio, eksportlar |
 | Autentifikatsiya | **Better Auth** (o'z bazamizda) + Telegram Login + Google OAuth | Ma'lumotlar o'zimizda qoladi |
@@ -58,7 +58,7 @@ flowchart LR
     RAG[Qidiruv xizmati<br/>gibrid qidiruv + rerank]
     PER[Persona dvigateli<br/>uslub profili + namunalar]
     LLM[LLM qatlami<br/>router, fallback, xarajat hisoblagich]
-    WK[Workerlar pg-boss<br/>ingest, embed, ASR, TTS,<br/>xotira, baholash]
+    WK[Workerlar: jobs navbati<br/>ingest, embed, ASR, TTS,<br/>xotira, baholash]
     PG[(Postgres + pgvector<br/>RLS)]
     RD[(Valkey)]
     S3[(Obyekt saqlagich)]
@@ -254,7 +254,7 @@ Rejadan ataylab chetga chiqilgan joylar:
 ai-clone/
 ├── apps/
 │   ├── web/            # Next.js: landing, dashboard, vidjet, API, webhooklar
-│   └── worker/         # pg-boss vazifalari: ingest, embed, ASR/TTS, xotira, eval
+│   └── worker/         # navbat vazifalari: ingest, embed, ASR/TTS, xotira, eval
 ├── packages/
 │   ├── core/
 │   │   ├── src/llm/provider.ts         # LLMProvider, router, fallback, xarajat

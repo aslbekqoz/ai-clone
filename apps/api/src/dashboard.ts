@@ -75,6 +75,7 @@ async function api(path,opts={}){const res=await fetch(path,{...opts,headers:{"a
   const ct=res.headers.get("content-type")||"";const data=ct.includes("json")?await res.json():await res.text();
   if(!res.ok)throw new Error((data&&data.error)||("Xato "+res.status));return data;}
 const post=(p,b)=>api(p,{method:"POST",body:JSON.stringify(b)});
+async function waitJob(r){if(!r.jobId)return r;toast("Navbatga qo'yildi, ishlanmoqda…");for(let i=0;i<400;i++){await new Promise(z=>setTimeout(z,1500));const j=await api("/v1/jobs/"+r.jobId);if(j.status==="done")return j.result;if(j.status==="failed")throw new Error(j.error||"Vazifa bajarilmadi");}throw new Error("Vazifa hali tugamadi — keyinroq Bilim bo'limini yangilang");}
 const patch=(p,b)=>api(p,{method:"PATCH",body:JSON.stringify(b)});
 function fmt(d){const x=new Date(d);return x.toLocaleString("uz-UZ",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});}
 function guard(fn){return async(e)=>{e&&e.preventDefault&&e.preventDefault();const b=e&&e.submitter||e&&e.currentTarget;if(b&&b.tagName==="BUTTON")b.disabled=true;
@@ -158,9 +159,9 @@ async function viewKnowledge(view){const table=h("tbody");
   view.append(h("div",{class:"grid"},
     h("form",{class:"card",onsubmit:guard(async()=>{added(await post("/v1/clones/"+clone.id+"/sources",{title:t.title.value,text:t.text.value}));t.title.value="";t.text.value="";})},h("h3",{},"Matn"),h("label",{},"Sarlavha"),t.title,h("label",{},"Matn"),t.text,h("div",{style:"margin-top:12px"},h("button",{type:"submit"},"Qo'shish"))),
     h("div",{style:"display:flex;flex-direction:column;gap:16px"},
-      h("form",{class:"card",onsubmit:guard(async()=>{const fd=new FormData();fd.append("file",fl.file.files[0]);const r=await api("/v1/clones/"+clone.id+"/sources/file",{method:"POST",body:fd});fl.file.value="";
+      h("form",{class:"card",onsubmit:guard(async()=>{const fd=new FormData();fd.append("file",fl.file.files[0]);const r=await waitJob(await api("/v1/clones/"+clone.id+"/sources/file",{method:"POST",body:fd}));fl.file.value="";
           toast(r.duplicate?"Bu fayl allaqachon bor":"Qo'shildi: "+r.chunks+" bo'lak");load();})},h("h3",{},"Fayl"),h("p",{class:"small muted"},"PDF, DOCX, TXT yoki MD — 20 MB gacha. PDF'da iqtibos sahifa raqami bilan."),fl.file,h("div",{style:"margin-top:12px"},h("button",{type:"submit"},"Yuklash"))),
-      h("form",{class:"card",onsubmit:guard(async()=>{toast("Video transkripti olinmoqda…");const r=await post("/v1/clones/"+clone.id+"/sources/youtube",{url:yt.url.value});yt.url.value="";
+      h("form",{class:"card",onsubmit:guard(async()=>{toast("Video transkripti olinmoqda…");const r=await waitJob(await post("/v1/clones/"+clone.id+"/sources/youtube",{url:yt.url.value}));yt.url.value="";
           toast(r.duplicate?"Bu video allaqachon bor":"Qo'shildi: "+r.chunks+" bo'lak ("+(r.method==="captions"?"subtitrlardan":"audio orqali")+")");load();})},h("h3",{},"YouTube video"),h("p",{class:"small muted"},"Subtitrlardan olinadi; iqtibos videoning aniq daqiqasiga olib boradi."),yt.url,h("div",{style:"margin-top:12px"},h("button",{type:"submit"},"Yuklash"))),
       h("form",{class:"card",onsubmit:guard(async()=>{added(await post("/v1/clones/"+clone.id+"/sources/url",{url:u.url.value}));u.url.value="";})},h("h3",{},"Sayt sahifasi"),h("label",{},"Havola"),u.url,h("div",{style:"margin-top:12px"},h("button",{type:"submit"},"Yuklash"))),
       h("form",{class:"card",onsubmit:guard(async()=>{const json=JSON.parse(await tg.file.files[0].text());const ownerIds=tg.owners.value.split(",").map(s=>s.trim()).filter(Boolean);
