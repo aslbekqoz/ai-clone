@@ -1,0 +1,365 @@
+/* AQSh iqtisodiyoti — taqdimot uslubi.
+   G‘oya: Amerika avtomagistrali (yo‘l belgilari, CHIQISH raqamlari, pastda yo‘l chizig‘i)
+   + statistika byurosi hisobotining toza grafiklari. Sahna 1920×1080. */
+
+:root {
+  --paper: #F7F5F0;
+  --paper-2: #EEEAE0;
+  --ink: #141414;
+  --muted: #55524B;
+  --rule: #D6D0C2;
+
+  /* tarmoq ranglari — yorqinligi bilan ham farqlanadi (proyektor uchun) */
+  --ind: #1C3F94;
+  --ind-2: #7F9BD6;
+  --constr: #9C36B5;
+  --constr-2: #D7A6E3;
+  --agri: #2F9E44;
+  --agri-2: #9CD3A6;
+  --agri-text: #237A34;
+  --serv: #F59F00;         /* faqat grafik va ustunlar */
+  --serv-text: #B86E00;    /* matn va yorliqlar */
+
+  --red: #C92A2A;
+  --hwy: #00653A;          /* yo‘l belgisi yashili */
+  --road: #2E2E2E;
+  --line-yellow: #F5C400;
+
+  --head: 'Overpass', 'Arial Narrow', Arial, sans-serif;
+  --body: 'Source Serif 4', Georgia, serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  background: #D9D5CB;
+  color: var(--ink);
+  font-family: var(--head);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- sahna ---------- */
+#viewport { position: fixed; inset: 0; display: grid; place-items: center; }
+#stage {
+  position: absolute; left: 50%; top: 50%;
+  width: 1920px; height: 1080px;
+  margin: -540px 0 0 -960px;
+  transform-origin: 50% 50%;
+  background: var(--paper);
+  overflow: hidden;
+  font-size: 28px;
+}
+.slide {
+  position: absolute; inset: 0;
+  padding: 60px 90px 120px;
+  display: flex; flex-direction: column;
+  visibility: hidden; opacity: 0;
+}
+.slide.active { visibility: visible; opacity: 1; }
+
+/* fon videosi (ixtiyoriy) */
+.bg-video {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover; opacity: .10; filter: grayscale(1) contrast(.9);
+  pointer-events: none; z-index: 0;
+}
+.slide > *:not(.bg-video):not(.speaker):not(.road-print) { position: relative; z-index: 1; }
+
+/* ---------- sarlavha qatori ---------- */
+.hd { display: flex; justify-content: space-between; align-items: flex-start; gap: 40px; min-height: 150px; }
+.title {
+  font: 800 60px/1.08 var(--head);
+  letter-spacing: -0.012em;
+  max-width: 1380px;
+  text-wrap: balance;
+}
+.lede { font: italic 400 28px/1.3 var(--body); color: var(--muted); margin-top: 14px; max-width: 1380px; }
+
+/* CHIQISH belgisi (AQSh yo‘l belgisi: yuqorida raqam yorlig‘i, pastda tarmoq chizig‘i) */
+.sign { flex: none; display: flex; flex-direction: column; align-items: flex-end; margin-top: 4px; }
+.sign .tab {
+  background: var(--hwy); color: #fff;
+  font: 700 24px/1 var(--head); letter-spacing: .04em;
+  padding: 10px 16px 6px; border: 3px solid #fff; border-bottom: 0;
+  border-radius: 10px 10px 0 0; outline: 3px solid var(--hwy); outline-offset: -1px;
+  margin-right: 18px;
+}
+.sign .panel {
+  background: var(--hwy); color: #fff;
+  font: 700 34px/1 var(--head);
+  padding: 20px 28px 16px; min-width: 260px; text-align: center;
+  border: 3px solid #fff; border-radius: 14px;
+  box-shadow: 0 0 0 3px var(--hwy);
+  position: relative;
+}
+.sign .panel::after {
+  content: ""; position: absolute; left: 16px; right: 16px; bottom: -14px; height: 8px;
+  background: var(--lane, #9a9a9a); border-radius: 4px;
+}
+
+/* ---------- asosiy maydon ---------- */
+.main { flex: 1; display: grid; grid-template-columns: 1080px 1fr; gap: 70px; margin-top: 28px; min-height: 0; }
+.main.full { grid-template-columns: 1fr; }
+.col { display: flex; flex-direction: column; gap: 22px; min-height: 0; }
+
+.src { font: 400 24px/1.2 var(--head); color: #77736A; margin-top: 4px; }
+
+/* katta raqamlar */
+.bigs { display: flex; gap: 36px; flex-wrap: wrap; }
+.big { display: flex; flex-direction: column; }
+.big .n { font: 800 76px/1 var(--head); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.big .n.sm { font-size: 60px; }
+.big small { font: 400 24px/1.25 var(--head); color: var(--muted); margin-top: 6px; max-width: 520px; }
+
+/* Nega? bloki — sariq romb (ogohlantirish belgisi) bilan */
+.why h3, .means h3 { font: 700 30px/1 var(--head); display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
+.why h3 .q { position: relative; width: 40px; height: 40px; flex: none; }
+.why h3 .q::before {
+  content: ""; position: absolute; inset: 4px; transform: rotate(45deg);
+  background: var(--line-yellow); border: 3px solid var(--ink); border-radius: 4px;
+}
+.why h3 .q::after { content: "?"; position: absolute; inset: 0; display: grid; place-items: center; font: 800 22px/1 var(--head); padding-top: 4px; }
+.why p, .why li { font: 400 28px/1.34 var(--body); }
+.why ul { list-style: none; display: flex; flex-direction: column; gap: 12px; }
+.why li { padding-left: 26px; position: relative; }
+.why li::before { content: ""; position: absolute; left: 0; top: 14px; width: 12px; height: 12px; background: var(--ink); }
+.why b, .means b { font-weight: 600; }
+
+.means {
+  border-left: 10px solid var(--lane, var(--ink));
+  padding: 6px 0 6px 24px;
+}
+.means h3 { font: 600 24px/1 var(--head); color: var(--muted); margin-bottom: 8px; }
+.means p { font: 700 34px/1.2 var(--head); text-wrap: balance; }
+
+.speaker {
+  position: absolute; left: 90px; bottom: 50px;
+  font: 400 24px/1 var(--head); color: var(--muted);
+  display: flex; align-items: center; gap: 10px; z-index: 2;
+}
+.speaker::before { content: ""; width: 12px; height: 12px; border-radius: 50%; background: var(--lane, var(--muted)); }
+
+/* tarmoq rangi o‘zgaruvchilari */
+[data-sector="ind"] { --lane: var(--ind); --lane-text: var(--ind); }
+[data-sector="serv"] { --lane: var(--serv); --lane-text: var(--serv-text); }
+[data-sector="agri"] { --lane: var(--agri); --lane-text: var(--agri-text); }
+[data-sector="constr"] { --lane: var(--constr); --lane-text: var(--constr); }
+.t-ind { color: var(--ind); } .t-serv { color: var(--serv-text); } .t-agri { color: var(--agri-text); } .t-constr { color: var(--constr); }
+.t-red { color: var(--red); } .t-lane { color: var(--lane-text, var(--ink)); }
+
+/* ---------- jadvallar ---------- */
+.tbl { border-collapse: collapse; font: 400 24px/1 var(--head); font-variant-numeric: tabular-nums; width: 100%; }
+.tbl th, .tbl td { padding: 10px 12px 7px; text-align: right; white-space: nowrap; }
+.tbl th:first-child, .tbl td:first-child { text-align: left; color: var(--muted); white-space: normal; }
+.tbl thead th { font-weight: 700; border-bottom: 3px solid var(--ink); }
+.tbl tbody tr { border-bottom: 1px solid var(--rule); }
+.tbl td.hi { font-weight: 800; }
+
+/* ---------- grafik (SVG) ---------- */
+.chart svg { display: block; overflow: visible; }
+.chart text { font-family: var(--head); font-size: 24px; fill: var(--muted); }
+.chart .axis line, .chart .grid line { stroke: var(--rule); stroke-width: 1.5; }
+.chart .axis .base { stroke: var(--ink); stroke-width: 2; }
+.chart .lbl { font-weight: 700; }
+.chart .ann { font-weight: 600; fill: var(--ink); }
+
+/* ---------- muqova ---------- */
+.cover { padding: 70px 90px 120px; }
+.cover .gantry { display: flex; flex-direction: column; align-items: flex-start; }
+.cover .big-sign {
+  background: var(--hwy); color: #fff; border: 5px solid #fff; border-radius: 22px;
+  box-shadow: 0 0 0 5px var(--hwy); padding: 46px 60px 40px; max-width: 1360px;
+}
+.cover .big-sign .tab-row { font: 700 28px/1 var(--head); letter-spacing: .06em; opacity: .9; margin-bottom: 22px; }
+.cover .big-sign h1 { font: 800 84px/1.04 var(--head); letter-spacing: -0.015em; }
+.cover .lanes { display: flex; gap: 14px; margin: 26px 0 0 60px; }
+.cover .lanes i { display: block; width: 150px; height: 14px; border-radius: 7px; }
+.cover .posts { display: flex; gap: 900px; margin-left: 200px; }
+.cover .posts i { display: block; width: 26px; height: 60px; background: #8B887F; }
+.cover .question {
+  font: 800 38px/1.25 var(--head); text-transform: uppercase; letter-spacing: .01em;
+  max-width: 1500px; margin-top: 40px;
+}
+.cover .bottom { margin-top: auto; display: flex; justify-content: space-between; align-items: flex-end; gap: 60px; }
+.cover .gdp .n { font: 800 110px/1 var(--head); letter-spacing: -0.02em; white-space: nowrap; }
+.cover .gdp small { display: block; font: 400 26px/1.3 var(--head); color: var(--muted); margin-top: 8px; }
+.cover .team { font: 400 26px/1.45 var(--head); text-align: right; }
+.cover .team b { font-weight: 700; display: block; margin-bottom: 4px; }
+
+/* shield (Interstate qalqoni) — muqovada */
+.shield { width: 170px; height: 180px; flex: none; }
+
+/* ---------- 2-slayd: ta’riflar ---------- */
+.defs { display: grid; grid-template-columns: 1fr 1fr; gap: 22px 40px; }
+.def { border-left: 10px solid var(--lane); padding: 4px 0 4px 20px; }
+.def h4 { font: 700 30px/1.1 var(--head); color: var(--lane-text); margin-bottom: 6px; }
+.def p { font: 400 26px/1.3 var(--body); }
+.method { display: flex; align-items: stretch; gap: 0; }
+.method .stepbox { flex: 1; background: var(--paper-2); padding: 18px 22px; border-radius: 10px; }
+.method .stepbox b { display: block; font: 800 28px/1.1 var(--head); margin-bottom: 6px; }
+.method .stepbox span { font: 400 24px/1.3 var(--body); }
+.method .arrow { width: 54px; flex: none; display: grid; place-items: center; }
+.gloss { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 40px; }
+.gloss p { font: 400 24px/1.3 var(--body); }
+.gloss b { font: 700 24px/1 var(--head); }
+
+/* ---------- 3-slayd: ulushlar ---------- */
+.sharebars { display: flex; flex-direction: column; gap: 26px; margin-top: 10px; }
+.sharerow { display: grid; grid-template-columns: 90px 1fr; align-items: center; gap: 18px; }
+.sharerow .yr { font: 800 34px/1 var(--head); }
+.sharebar { display: flex; height: 110px; border-radius: 6px; overflow: hidden; background: var(--paper-2); }
+.sharebar div { height: 100%; display: flex; align-items: center; padding-left: 16px; color: #fff; font: 800 30px/1 var(--head); white-space: nowrap; overflow: hidden; }
+.sharebar .serv { background: var(--serv); color: var(--ink); }
+.sharebar .ind { background: var(--ind); }
+.sharebar .constr { background: var(--constr); padding-left: 0; }
+.sharebar .agri { background: var(--agri); padding-left: 0; }
+.sharelegend { width: 100%; margin-top: 8px; }
+.sharelegend td:first-child { color: var(--ink); font-weight: 700; }
+.sharelegend .sw { display: inline-block; width: 22px; height: 22px; border-radius: 4px; vertical-align: -3px; margin-right: 12px; }
+
+/* ---------- 9-slayd: infratuzilma qatori ---------- */
+.infra-strip { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
+.infra-strip > div { border-top: 6px solid var(--lane); padding-top: 12px; }
+.infra-strip b { font: 800 44px/1 var(--head); color: var(--lane-text); display: block; margin-bottom: 6px; }
+.infra-strip p { font: 400 24px/1.3 var(--body); }
+
+/* ---------- 11-slayd: vaqt chizig‘i ---------- */
+.timeline { display: grid; grid-template-columns: repeat(3, 1fr); gap: 26px; }
+.event { border-top: 6px solid var(--constr); padding-top: 12px; }
+.event .when { font: 800 30px/1 var(--head); color: var(--constr); }
+.event h4 { font: 700 26px/1.2 var(--head); margin: 6px 0; }
+.event p { font: 400 24px/1.3 var(--body); }
+
+/* ---------- 12-slayd: javoblar ---------- */
+.answers { display: flex; flex-direction: column; gap: 22px; }
+.answer { display: grid; grid-template-columns: 60px 1fr; gap: 16px; }
+.answer .no {
+  width: 56px; height: 56px; border-radius: 50%; background: var(--ink); color: #fff;
+  display: grid; place-items: center; font: 800 28px/1 var(--head); padding-top: 3px;
+}
+.answer h4 { font: 800 32px/1.15 var(--head); }
+.answer p { font: 400 24px/1.3 var(--body); margin-top: 4px; }
+.cmp th, .cmp td { padding: 12px 14px 9px; }
+.cmp thead th { white-space: normal; line-height: 1.1; vertical-align: bottom; }
+
+/* ---------- 13-slayd: inqiroz kartalari ---------- */
+.crises { display: grid; grid-template-columns: repeat(3, 1fr); gap: 26px; }
+.crisis { border-top: 6px solid var(--red); padding-top: 12px; }
+.crisis .when { font: 800 32px/1 var(--head); }
+.crisis .what { font: 700 24px/1.25 var(--head); margin: 6px 0; }
+.crisis p { font: 400 24px/1.3 var(--body); }
+
+/* ---------- 14-slayd: sabab → natija ---------- */
+.flows { display: flex; flex-direction: column; gap: 20px; }
+.flow { display: grid; grid-template-columns: 262px 40px minmax(0, 1fr) 40px 262px; align-items: center; min-height: 196px; }
+.flow .cause, .flow .effect { padding: 16px 18px; border-radius: 12px; height: 100%; display: flex; flex-direction: column; justify-content: center; }
+.flow .cause { background: var(--hwy); color: #fff; }
+.flow .cause b { font: 800 30px/1.1 var(--head); }
+.flow .cause span { font: 400 24px/1.25 var(--head); opacity: .92; margin-top: 6px; }
+.flow .effect { background: var(--paper-2); border-left: 10px solid var(--lane); }
+.flow .effect b { font: 800 28px/1.1 var(--head); color: var(--lane-text); }
+.flow .effect span { font: 400 24px/1.25 var(--body); margin-top: 6px; }
+.flow .mid { padding: 0 8px; display: flex; flex-direction: column; justify-content: center; gap: 6px; }
+.flow .mid .n { font: 800 56px/1 var(--head); white-space: nowrap; }
+.flow .mid small { font: 400 24px/1.25 var(--head); color: var(--muted); }
+.flow .arrow { display: grid; place-items: center; }
+.minibars { display: flex; flex-direction: column; gap: 8px; }
+.minibar { display: grid; grid-template-columns: 130px 1fr; align-items: center; gap: 12px; font: 600 24px/1 var(--head); }
+.minibar i { display: block; height: 30px; border-radius: 4px; background: var(--ind); position: relative; }
+.minibar i em { position: absolute; left: calc(100% + 10px); top: 4px; font-style: normal; font-weight: 800; white-space: nowrap; }
+.cols7 { display: flex; align-items: flex-end; gap: 4px; height: 150px; }
+.cols7 > div { flex: auto; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; }
+.cols7 i { display: block; width: 46px; background: var(--constr); border-radius: 4px 4px 0 0; }
+.cols7 em { font: 800 24px/1 var(--head); font-style: normal; margin-bottom: 4px; }
+.cols7 span { font: 400 24px/1 var(--head); color: var(--muted); margin-top: 6px; white-space: nowrap; }
+
+/* ---------- 15-slayd ---------- */
+.concl { display: grid; grid-template-columns: repeat(4, 1fr); gap: 26px; }
+.concl > div { border-top: 8px solid var(--lane); padding-top: 10px; font: 400 24px/1.3 var(--body); }
+.concl b { display: block; font: 800 26px/1.1 var(--head); color: var(--lane-text); margin-bottom: 4px; }
+.props { display: grid; grid-template-columns: repeat(3, 1fr); gap: 34px; }
+.prop { display: flex; flex-direction: column; gap: 10px; }
+.prop h4 { font: 800 32px/1.1 var(--head); display: flex; gap: 14px; align-items: baseline; }
+.prop h4 .no { flex: none; width: 48px; height: 48px; border-radius: 50%; background: var(--hwy); color: #fff; display: grid; place-items: center; font-size: 26px; padding-top: 3px; }
+.prop .n { display: block; font: 800 64px/1 var(--head); color: var(--red); margin: 4px 0 6px; }
+.prop dl { display: grid; grid-template-columns: 1fr; gap: 6px; }
+.prop dt { font: 700 24px/1 var(--head); color: var(--muted); margin-top: 6px; }
+.prop dd { font: 400 24px/1.28 var(--body); }
+.wrap-bottom { display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: start; }
+
+/* ---------- manbalar ---------- */
+.refs { columns: 2; column-gap: 70px; font: 400 24px/1.28 var(--head); }
+.refs li { break-inside: avoid; margin: 0 0 12px 34px; }
+.refs li::marker { font-weight: 800; }
+.refs ul { list-style: none; color: var(--muted); }
+.refs a { color: inherit; text-decoration: none; overflow-wrap: anywhere; }
+.thanks { font: 800 64px/1.1 var(--head); margin-top: auto; color: var(--hwy); }
+
+/* ---------- ilova ---------- */
+.tabs { display: flex; gap: 12px; flex-wrap: wrap; }
+.tabs button {
+  font: 700 24px/1 var(--head); padding: 14px 20px 10px; border-radius: 10px;
+  border: 3px solid var(--hwy); background: transparent; color: var(--hwy); cursor: pointer;
+}
+.tabs button[aria-pressed="true"] { background: var(--hwy); color: #fff; }
+.apx { margin-top: 10px; }
+.apx td, .apx th { padding: 9px 8px 6px; font-size: 24px; }
+.apx + .apx { margin-top: 26px; }
+
+/* ---------- yo‘l = progress ---------- */
+#road {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 30px; background: var(--road); z-index: 5;
+}
+#road .dash {
+  position: absolute; left: 0; right: 0; top: 13px; height: 4px;
+  background: repeating-linear-gradient(90deg, #E9E3C8 0 28px, transparent 28px 56px);
+  opacity: .55;
+}
+#road .fill { position: absolute; left: 0; top: 12px; height: 6px; width: 0; background: var(--line-yellow); }
+#road .mile { position: absolute; top: 0; width: 2px; height: 8px; background: #8a8a8a; }
+#clicks { position: absolute; right: 90px; bottom: 50px; font: 400 24px/1 var(--head); color: #9A968C; z-index: 5; }
+
+/* ---------- ssenariy paneli ---------- */
+#notes {
+  position: fixed; right: 0; top: 0; bottom: 0; width: min(560px, 92vw);
+  background: #1C1C1C; color: #F2EFE6; padding: 26px 28px 40px;
+  transform: translateX(100%); transition: transform .3s ease;
+  overflow-y: auto; z-index: 50; font: 400 20px/1.5 var(--body);
+}
+#notes.open { transform: none; box-shadow: -10px 0 40px rgba(0,0,0,.3); }
+#notes header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 14px; font-family: var(--head); }
+#notes header b { font-size: 22px; color: var(--line-yellow); }
+#notes header span { font-size: 16px; color: #A9A69D; }
+#notes .who { font: 700 18px/1.2 var(--head); color: #9FD7B4; margin-bottom: 10px; }
+#notes p { margin-bottom: 12px; }
+#notes .cue { color: var(--line-yellow); font-family: var(--head); font-weight: 700; }
+#notes .next { margin-top: 18px; padding-top: 12px; border-top: 1px solid #444; font: 400 16px/1.4 var(--head); color: #A9A69D; }
+#notes .timer { font: 700 18px/1 var(--head); color: #fff; }
+#help {
+  position: fixed; left: 16px; bottom: 16px; z-index: 40; background: rgba(20,20,20,.86); color: #fff;
+  font: 400 16px/1.5 var(--head); padding: 12px 16px; border-radius: 10px; display: none;
+}
+#help.show { display: block; }
+
+/* ---------- PDF / chop etish rejimi ---------- */
+body.print { overflow: visible; background: var(--paper); }
+body.print #viewport { position: static; display: block; }
+body.print #stage { position: static; margin: 0; transform: none !important; width: auto; height: auto; overflow: visible; background: none; }
+body.print .slide {
+  position: relative; width: 1920px; height: 1080px; visibility: visible; opacity: 1;
+  background: var(--paper); overflow: hidden; break-after: page; page-break-after: always;
+}
+body.print #road, body.print #clicks, body.print #notes, body.print #help { display: none; }
+body.print .slide .road-print { display: block; }
+.road-print { display: none; position: absolute; left: 0; right: 0; bottom: 0; height: 30px; background: var(--road); }
+.road-print i { position: absolute; left: 0; top: 12px; height: 6px; background: var(--line-yellow); }
+@page { size: 1920px 1080px; margin: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  #notes { transition: none; }
+}
+
+/* tipografiya yordamchilari */
+.nw { white-space: nowrap; }
+.dot { display: inline-block; width: .22em; height: .22em; border-radius: 50%; background: currentColor; vertical-align: .22em; margin: 0 .42em; }

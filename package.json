@@ -1,0 +1,17 @@
+{
+  "name": "aqsh-taqdimot",
+  "private": true,
+  "scripts": {
+    "build": "node tools/build.js",
+    "check": "node tools/check-numbers.js",
+    "export": "node tools/export.js"
+  },
+  "dependencies": {
+    "@fontsource/overpass": "5.3.0",
+    "@fontsource/source-serif-4": "5.3.1",
+    "gsap": "3.15.0"
+  },
+  "devDependencies": {
+    "playwright": "1.56.1"
+  }
+}

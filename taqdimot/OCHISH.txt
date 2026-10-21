@@ -1,0 +1,19 @@
+AQSh iqtisodiyotining asosiy tarmoqlari: 2000–2025 — taqdimot
+
+OCHISH
+  index.html faylini Chrome, Edge yoki Firefox'da oching (ikki marta bosing).
+  Internet kerak emas: GSAP, shriftlar va ma'lumotlar shu papka ichida.
+  Proyektorda F tugmasi bilan to'liq ekranga o'ting.
+
+BOSHQARUV
+  →, Probel, Enter, sichqoncha bosishi — keyingi qadam (element), so'ng keyingi slayd
+  ←                — oldingi slayd (to'liq ochilgan holatda)
+  Telefonda        — chapga/o'ngga surish
+  S                — ssenariy paneli (ma'ruzachi matni, taymer, qadamlar)
+  F                — to'liq ekran
+  Home / End       — birinchi / oxirgi slayd
+  H                — tugmalar ro'yxati
+  Pastki o'ng burchak: slayd raqami va ochilmagan qadamlar (○).
+
+ZAXIRA
+  taqdimot.pdf — har bir slaydning yakuniy holati, 1920×1080, sahifada bitta slayd.
