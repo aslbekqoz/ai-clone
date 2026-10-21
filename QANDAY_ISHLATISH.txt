@@ -1,0 +1,5 @@
+1. Bu arxivni kompyuteringizda yangi papkaga oching, masalan: Desktop/aqsh-taqdimot
+2. Terminalda shu papkaga o'ting va "claude" buyrug'ini ishga tushiring (Claude Code).
+3. PROMPT.md faylining butun matnini nusxalab, Claude Code'ga yuboring.
+4. Ixtiyoriy: video qo'shmoqchi bo'lsangiz, assets/video/ papkasini yaratib, mp4 fayllarni oldindan shu yerga tashlang.
+5. Claude Code avval slaydlar rejasini ko'rsatadi — tasdiqlang yoki o'zgartirish ayting.
