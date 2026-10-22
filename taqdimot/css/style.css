@@ -1,4 +1,4 @@
-/* AQSh iqtisodiyoti — taqdimot uslubi.
+/* AQSh iqtisodiyoti — taqdimot uslubi. Shriftlar: IBM Plex Sans (I va l aniq farqlanadi) + Source Serif 4.
    G‘oya: Amerika avtomagistrali (yo‘l belgilari, CHIQISH raqamlari, pastda yo‘l chizig‘i)
    + statistika byurosi hisobotining toza grafiklari. Sahna 1920×1080. */
 
@@ -25,7 +25,7 @@
   --road: #2E2E2E;
   --line-yellow: #F5C400;
 
-  --head: 'Overpass', 'Arial Narrow', Arial, sans-serif;
+  --head: 'IBM Plex Sans', Arial, sans-serif;
   --body: 'Source Serif 4', Georgia, serif;
 }
 
@@ -69,7 +69,7 @@ body {
 /* ---------- sarlavha qatori ---------- */
 .hd { display: flex; justify-content: space-between; align-items: flex-start; gap: 40px; min-height: 150px; }
 .title {
-  font: 800 60px/1.08 var(--head);
+  font: 700 60px/1.08 var(--head);
   letter-spacing: -0.012em;
   max-width: 1380px;
   text-wrap: balance;
@@ -108,7 +108,7 @@ body {
 /* katta raqamlar */
 .bigs { display: flex; gap: 36px; flex-wrap: wrap; }
 .big { display: flex; flex-direction: column; }
-.big .n { font: 800 76px/1 var(--head); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.big .n { font: 700 76px/1 var(--head); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .big .n.sm { font-size: 60px; }
 .big small { font: 400 24px/1.25 var(--head); color: var(--muted); margin-top: 6px; max-width: 520px; }
 
@@ -119,7 +119,7 @@ body {
   content: ""; position: absolute; inset: 4px; transform: rotate(45deg);
   background: var(--line-yellow); border: 3px solid var(--ink); border-radius: 4px;
 }
-.why h3 .q::after { content: "?"; position: absolute; inset: 0; display: grid; place-items: center; font: 800 22px/1 var(--head); padding-top: 4px; }
+.why h3 .q::after { content: "?"; position: absolute; inset: 0; display: grid; place-items: center; font: 700 22px/1 var(--head); padding-top: 4px; }
 .why p, .why li { font: 400 28px/1.34 var(--body); }
 .why ul { list-style: none; display: flex; flex-direction: column; gap: 12px; }
 .why li { padding-left: 26px; position: relative; }
@@ -154,7 +154,7 @@ body {
 .tbl th:first-child, .tbl td:first-child { text-align: left; color: var(--muted); white-space: normal; }
 .tbl thead th { font-weight: 700; border-bottom: 3px solid var(--ink); }
 .tbl tbody tr { border-bottom: 1px solid var(--rule); }
-.tbl td.hi { font-weight: 800; }
+.tbl td.hi { font-weight: 700; }
 
 /* ---------- grafik (SVG) ---------- */
 .chart svg { display: block; overflow: visible; }
@@ -172,17 +172,17 @@ body {
   box-shadow: 0 0 0 5px var(--hwy); padding: 46px 60px 40px; max-width: 1360px;
 }
 .cover .big-sign .tab-row { font: 700 28px/1 var(--head); letter-spacing: .06em; opacity: .9; margin-bottom: 22px; }
-.cover .big-sign h1 { font: 800 84px/1.04 var(--head); letter-spacing: -0.015em; }
+.cover .big-sign h1 { font: 700 84px/1.04 var(--head); letter-spacing: -0.015em; }
 .cover .lanes { display: flex; gap: 14px; margin: 26px 0 0 60px; }
 .cover .lanes i { display: block; width: 150px; height: 14px; border-radius: 7px; }
 .cover .posts { display: flex; gap: 900px; margin-left: 200px; }
 .cover .posts i { display: block; width: 26px; height: 60px; background: #8B887F; }
 .cover .question {
-  font: 800 38px/1.25 var(--head); text-transform: uppercase; letter-spacing: .01em;
+  font: 700 38px/1.25 var(--head); text-transform: uppercase; letter-spacing: .01em;
   max-width: 1500px; margin-top: 40px;
 }
 .cover .bottom { margin-top: auto; display: flex; justify-content: space-between; align-items: flex-end; gap: 60px; }
-.cover .gdp .n { font: 800 110px/1 var(--head); letter-spacing: -0.02em; white-space: nowrap; }
+.cover .gdp .n { font: 700 110px/1 var(--head); letter-spacing: -0.02em; white-space: nowrap; }
 .cover .gdp small { display: block; font: 400 26px/1.3 var(--head); color: var(--muted); margin-top: 8px; }
 .cover .team { font: 400 26px/1.45 var(--head); text-align: right; }
 .cover .team b { font-weight: 700; display: block; margin-bottom: 4px; }
@@ -197,7 +197,7 @@ body {
 .def p { font: 400 26px/1.3 var(--body); }
 .method { display: flex; align-items: stretch; gap: 0; }
 .method .stepbox { flex: 1; background: var(--paper-2); padding: 18px 22px; border-radius: 10px; }
-.method .stepbox b { display: block; font: 800 28px/1.1 var(--head); margin-bottom: 6px; }
+.method .stepbox b { display: block; font: 700 28px/1.1 var(--head); margin-bottom: 6px; }
 .method .stepbox span { font: 400 24px/1.3 var(--body); }
 .method .arrow { width: 54px; flex: none; display: grid; place-items: center; }
 .gloss { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 40px; }
@@ -207,9 +207,9 @@ body {
 /* ---------- 3-slayd: ulushlar ---------- */
 .sharebars { display: flex; flex-direction: column; gap: 26px; margin-top: 10px; }
 .sharerow { display: grid; grid-template-columns: 90px 1fr; align-items: center; gap: 18px; }
-.sharerow .yr { font: 800 34px/1 var(--head); }
+.sharerow .yr { font: 700 34px/1 var(--head); }
 .sharebar { display: flex; height: 110px; border-radius: 6px; overflow: hidden; background: var(--paper-2); }
-.sharebar div { height: 100%; display: flex; align-items: center; padding-left: 16px; color: #fff; font: 800 30px/1 var(--head); white-space: nowrap; overflow: hidden; }
+.sharebar div { height: 100%; display: flex; align-items: center; padding-left: 16px; color: #fff; font: 700 30px/1 var(--head); white-space: nowrap; overflow: hidden; }
 .sharebar .serv { background: var(--serv); color: var(--ink); }
 .sharebar .ind { background: var(--ind); }
 .sharebar .constr { background: var(--constr); padding-left: 0; }
@@ -221,13 +221,13 @@ body {
 /* ---------- 9-slayd: infratuzilma qatori ---------- */
 .infra-strip { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
 .infra-strip > div { border-top: 6px solid var(--lane); padding-top: 12px; }
-.infra-strip b { font: 800 44px/1 var(--head); color: var(--lane-text); display: block; margin-bottom: 6px; }
+.infra-strip b { font: 700 44px/1 var(--head); color: var(--lane-text); display: block; margin-bottom: 6px; }
 .infra-strip p { font: 400 24px/1.3 var(--body); }
 
 /* ---------- 11-slayd: vaqt chizig‘i ---------- */
 .timeline { display: grid; grid-template-columns: repeat(3, 1fr); gap: 26px; }
 .event { border-top: 6px solid var(--constr); padding-top: 12px; }
-.event .when { font: 800 30px/1 var(--head); color: var(--constr); }
+.event .when { font: 700 30px/1 var(--head); color: var(--constr); }
 .event h4 { font: 700 26px/1.2 var(--head); margin: 6px 0; }
 .event p { font: 400 24px/1.3 var(--body); }
 
@@ -236,9 +236,9 @@ body {
 .answer { display: grid; grid-template-columns: 60px 1fr; gap: 16px; }
 .answer .no {
   width: 56px; height: 56px; border-radius: 50%; background: var(--ink); color: #fff;
-  display: grid; place-items: center; font: 800 28px/1 var(--head); padding-top: 3px;
+  display: grid; place-items: center; font: 700 28px/1 var(--head); padding-top: 3px;
 }
-.answer h4 { font: 800 32px/1.15 var(--head); }
+.answer h4 { font: 700 32px/1.15 var(--head); }
 .answer p { font: 400 24px/1.3 var(--body); margin-top: 4px; }
 .cmp th, .cmp td { padding: 12px 14px 9px; }
 .cmp thead th { white-space: normal; line-height: 1.1; vertical-align: bottom; }
@@ -246,7 +246,7 @@ body {
 /* ---------- 13-slayd: inqiroz kartalari ---------- */
 .crises { display: grid; grid-template-columns: repeat(3, 1fr); gap: 26px; }
 .crisis { border-top: 6px solid var(--red); padding-top: 12px; }
-.crisis .when { font: 800 32px/1 var(--head); }
+.crisis .when { font: 700 32px/1 var(--head); }
 .crisis .what { font: 700 24px/1.25 var(--head); margin: 6px 0; }
 .crisis p { font: 400 24px/1.3 var(--body); }
 
@@ -255,34 +255,34 @@ body {
 .flow { display: grid; grid-template-columns: 262px 40px minmax(0, 1fr) 40px 262px; align-items: center; min-height: 196px; }
 .flow .cause, .flow .effect { padding: 16px 18px; border-radius: 12px; height: 100%; display: flex; flex-direction: column; justify-content: center; }
 .flow .cause { background: var(--hwy); color: #fff; }
-.flow .cause b { font: 800 30px/1.1 var(--head); }
+.flow .cause b { font: 700 30px/1.1 var(--head); }
 .flow .cause span { font: 400 24px/1.25 var(--head); opacity: .92; margin-top: 6px; }
 .flow .effect { background: var(--paper-2); border-left: 10px solid var(--lane); }
-.flow .effect b { font: 800 28px/1.1 var(--head); color: var(--lane-text); }
+.flow .effect b { font: 700 28px/1.1 var(--head); color: var(--lane-text); }
 .flow .effect span { font: 400 24px/1.25 var(--body); margin-top: 6px; }
 .flow .mid { padding: 0 8px; display: flex; flex-direction: column; justify-content: center; gap: 6px; }
-.flow .mid .n { font: 800 56px/1 var(--head); white-space: nowrap; }
+.flow .mid .n { font: 700 56px/1 var(--head); white-space: nowrap; }
 .flow .mid small { font: 400 24px/1.25 var(--head); color: var(--muted); }
 .flow .arrow { display: grid; place-items: center; }
 .minibars { display: flex; flex-direction: column; gap: 8px; }
 .minibar { display: grid; grid-template-columns: 130px 1fr; align-items: center; gap: 12px; font: 600 24px/1 var(--head); }
 .minibar i { display: block; height: 30px; border-radius: 4px; background: var(--ind); position: relative; }
-.minibar i em { position: absolute; left: calc(100% + 10px); top: 4px; font-style: normal; font-weight: 800; white-space: nowrap; }
+.minibar i em { position: absolute; left: calc(100% + 10px); top: 4px; font-style: normal; font-weight: 700; white-space: nowrap; }
 .cols7 { display: flex; align-items: flex-end; gap: 4px; height: 150px; }
 .cols7 > div { flex: auto; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; }
 .cols7 i { display: block; width: 46px; background: var(--constr); border-radius: 4px 4px 0 0; }
-.cols7 em { font: 800 24px/1 var(--head); font-style: normal; margin-bottom: 4px; }
+.cols7 em { font: 700 24px/1 var(--head); font-style: normal; margin-bottom: 4px; }
 .cols7 span { font: 400 24px/1 var(--head); color: var(--muted); margin-top: 6px; white-space: nowrap; }
 
 /* ---------- 15-slayd ---------- */
 .concl { display: grid; grid-template-columns: repeat(4, 1fr); gap: 26px; }
 .concl > div { border-top: 8px solid var(--lane); padding-top: 10px; font: 400 24px/1.3 var(--body); }
-.concl b { display: block; font: 800 26px/1.1 var(--head); color: var(--lane-text); margin-bottom: 4px; }
+.concl b { display: block; font: 700 26px/1.1 var(--head); color: var(--lane-text); margin-bottom: 4px; }
 .props { display: grid; grid-template-columns: repeat(3, 1fr); gap: 34px; }
 .prop { display: flex; flex-direction: column; gap: 10px; }
-.prop h4 { font: 800 32px/1.1 var(--head); display: flex; gap: 14px; align-items: baseline; }
+.prop h4 { font: 700 32px/1.1 var(--head); display: flex; gap: 14px; align-items: baseline; }
 .prop h4 .no { flex: none; width: 48px; height: 48px; border-radius: 50%; background: var(--hwy); color: #fff; display: grid; place-items: center; font-size: 26px; padding-top: 3px; }
-.prop .n { display: block; font: 800 64px/1 var(--head); color: var(--red); margin: 4px 0 6px; }
+.prop .n { display: block; font: 700 64px/1 var(--head); color: var(--red); margin: 4px 0 6px; }
 .prop dl { display: grid; grid-template-columns: 1fr; gap: 6px; }
 .prop dt { font: 700 24px/1 var(--head); color: var(--muted); margin-top: 6px; }
 .prop dd { font: 400 24px/1.28 var(--body); }
@@ -291,10 +291,10 @@ body {
 /* ---------- manbalar ---------- */
 .refs { columns: 2; column-gap: 70px; font: 400 24px/1.28 var(--head); }
 .refs li { break-inside: avoid; margin: 0 0 12px 34px; }
-.refs li::marker { font-weight: 800; }
+.refs li::marker { font-weight: 700; }
 .refs ul { list-style: none; color: var(--muted); }
 .refs a { color: inherit; text-decoration: none; overflow-wrap: anywhere; }
-.thanks { font: 800 64px/1.1 var(--head); margin-top: auto; color: var(--hwy); }
+.thanks { font: 700 64px/1.1 var(--head); margin-top: auto; color: var(--hwy); }
 
 /* ---------- ilova ---------- */
 .tabs { display: flex; gap: 12px; flex-wrap: wrap; }

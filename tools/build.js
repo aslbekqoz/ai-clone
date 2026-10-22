@@ -6,18 +6,19 @@ const root = path.join(__dirname, '..');
 const out = path.join(root, 'taqdimot');
 const mk = (p) => fs.mkdirSync(p, { recursive: true });
 mk(path.join(out, 'css'));
+// eski shrift fayllari qolib ketmasin
+fs.rmSync(path.join(out, 'assets/fonts'), { recursive: true, force: true });
 const cp = (from, to) => { mk(path.dirname(to)); fs.copyFileSync(from, to); };
 
 cp(path.join(root, 'node_modules/gsap/dist/gsap.min.js'), path.join(out, 'js/vendor/gsap.min.js'));
 
 const fonts = [
-  ['@fontsource/overpass', 'overpass-latin-400-normal.woff2'],
-  ['@fontsource/overpass', 'overpass-latin-600-normal.woff2'],
-  ['@fontsource/overpass', 'overpass-latin-700-normal.woff2'],
-  ['@fontsource/overpass', 'overpass-latin-800-normal.woff2'],
-  ['@fontsource/overpass', 'overpass-latin-ext-400-normal.woff2'],
-  ['@fontsource/overpass', 'overpass-latin-ext-700-normal.woff2'],
-  ['@fontsource/overpass', 'overpass-latin-ext-800-normal.woff2'],
+  ['@fontsource/ibm-plex-sans', 'ibm-plex-sans-latin-400-normal.woff2'],
+  ['@fontsource/ibm-plex-sans', 'ibm-plex-sans-latin-ext-400-normal.woff2'],
+  ['@fontsource/ibm-plex-sans', 'ibm-plex-sans-latin-600-normal.woff2'],
+  ['@fontsource/ibm-plex-sans', 'ibm-plex-sans-latin-ext-600-normal.woff2'],
+  ['@fontsource/ibm-plex-sans', 'ibm-plex-sans-latin-700-normal.woff2'],
+  ['@fontsource/ibm-plex-sans', 'ibm-plex-sans-latin-ext-700-normal.woff2'],
   ['@fontsource/source-serif-4', 'source-serif-4-latin-400-normal.woff2'],
   ['@fontsource/source-serif-4', 'source-serif-4-latin-400-italic.woff2'],
   ['@fontsource/source-serif-4', 'source-serif-4-latin-600-normal.woff2'],
