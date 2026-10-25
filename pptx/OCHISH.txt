@@ -1,0 +1,19 @@
+AQSh iqtisodiyotining asosiy tarmoqlari: 2000–2025 — PowerPoint versiyasi
+
+1. SHRIFTNI O'RNATING (bir marta)
+   shriftlar/ papkasidagi 4 ta IBM Plex Sans faylini o'rnating:
+   Windows: faylni ikki marta bosing → "Установить / Install".
+   macOS: ikki marta bosing → "Install Font".
+   Shrift o'rnatilmasa, PowerPoint uni boshqa shrift bilan almashtiradi va
+   "YaIM" yana "YalM"ga o'xshab qolishi mumkin. Izoh matnlari Cambria'da (Office bilan keladi).
+   Boshqa kompyuterda ko'rsatish uchun: Fayl → Parametrlar → Saqlash →
+   "Shriftlarni faylga joylashtirish" ni yoqib, qayta saqlang.
+
+2. OCHING: aqsh-taqdimot.pptx (PowerPoint 2016 yoki yangisi).
+
+3. KO'RSATISH
+   F5 — boshidan; → yoki bosish — keyingi element (har bir slaydda elementlar
+   bosish bilan birma-bir chiqadi), keyin keyingi slayd.
+   Ma'ruzachi rejimi (Alt+F5) — ssenariy "Eslatmalar"da, "[▶ bosing]" belgilari bilan.
+
+Grafiklar PowerPoint'ning o'z grafiklari: ustiga o'ng tugma → "Ma'lumotlarni tahrirlash".
