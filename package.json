@@ -5,7 +5,8 @@
     "build": "node tools/build.js",
     "check": "node tools/check-numbers.js",
     "export": "node tools/export.js",
-    "pptx": "node tools/build-pptx.js && python3 tools/pptx-animate.py pptx/aqsh-taqdimot.pptx"
+    "pptx": "node tools/build-pptx.js && python3 tools/pptx-animate.py pptx/aqsh-taqdimot.pptx",
+    "raqamli": "node raqamli/build.js && python3 tools/pptx-animate.py raqamli/raqamli-infratuzilma.pptx"
   },
   "dependencies": {
     "@fontsource/ibm-plex-sans": "5.3.0",

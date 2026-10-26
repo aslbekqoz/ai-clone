@@ -1,0 +1,19 @@
+13-mavzu: Raqamli infratuzilmaning mehnat unumdorligiga ta'sir mexanizmi — taqdimot (15 slayd)
+
+FAYLLAR
+  raqamli-infratuzilma.pptx — asosiy taqdimot (PowerPoint 2016+), grafiklar tahrirlanadi
+  raqamli-infratuzilma.pdf  — zaxira nusxa (animatsiyasiz)
+  shriftlar/                — IBM Plex Sans (bir marta o'rnating; bo'lmasa PowerPoint boshqa shrift qo'yadi)
+
+KO'RSATISH
+  F5 — boshidan. → yoki bosish — keyingi element (har slaydda elementlar birma-bir chiqadi).
+  Alt+F5 — ma'ruzachi rejimi: ssenariy "Eslatmalar"da, "[▶ bosing]" belgilari bilan.
+
+TUZILMA (topshiriq talablari)
+  Formula ............ 5–6-slaydlar
+  Statistik tahlil ... 7, 9-slaydlar
+  Grafik tahlil ...... 8, 10-slaydlar
+  Talaba tahlili ..... 11–12-slaydlar
+  Talaba xulosasi .... 13–14-slaydlar
+
+Ma'lumotlar: Jahon banki WDI (data/data.json); regressiyalar build.js ichida hisoblanadi.

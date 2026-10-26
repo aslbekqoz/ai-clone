@@ -85,9 +85,15 @@ def process_slide(xml):
 def hide_base_series(xml):
     def fix(m):
         ser = m.group(0)
-        if '<c:v>_asos</c:v>' not in ser:
-            return ser
-        return re.sub(r'<c:spPr>.*?</c:spPr>', '<c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr>', ser, count=1, flags=re.S)
+        if '<c:v>_asos</c:v>' in ser:
+            return re.sub(r'<c:spPr>.*?</c:spPr>', '<c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr>', ser, count=1, flags=re.S)
+        # nomi "— " bilan boshlangan tarqoq (scatter) qator: nuqtasiz, uzluksiz chiziq
+        if re.search(r'<c:v>\u2014 [^<]*</c:v>', ser):
+            col = re.search(r'<a:srgbClr val="([0-9A-Fa-f]{6})"', ser)
+            col = col.group(1) if col else '0A84C1'
+            ser = re.sub(r'<c:spPr>.*?</c:spPr>', f'<c:spPr><a:ln w="31750" cap="rnd"><a:solidFill><a:srgbClr val="{col}"/></a:solidFill><a:round/></a:ln></c:spPr>', ser, count=1, flags=re.S)
+            return re.sub(r'<c:marker>.*?</c:marker>', '<c:marker><c:symbol val="none"/></c:marker>', ser, count=1, flags=re.S)
+        return ser
     return re.sub(r'<c:ser>.*?</c:ser>', fix, xml, flags=re.S)
 
 
